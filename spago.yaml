@@ -1,0 +1,13 @@
+package:
+  name: yoga-tree-svg
+  dependencies:
+    - console
+    - effect
+    - prelude
+  test:
+    main: Test.Main
+    dependencies: []
+workspace:
+  packageSet:
+    registry: 65.0.0
+  extraPackages: {}
