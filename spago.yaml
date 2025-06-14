@@ -3,11 +3,17 @@ package:
   dependencies:
     - console
     - effect
+    - halogen
+    - halogen-svg-elems
     - prelude
+    - yoga-tree
   test:
     main: Test.Main
     dependencies: []
 workspace:
   packageSet:
     registry: 65.0.0
-  extraPackages: {}
+  extraPackages:
+    yoga-tree-utils:
+      git: https://github.com/shamansir/purescript-yoga-tree-utils.git
+      ref: dcc2229a3485d934e87a0fd0383474a071f26f3c
