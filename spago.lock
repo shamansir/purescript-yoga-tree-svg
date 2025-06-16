@@ -640,7 +640,7 @@
     "extra_packages": {
       "yoga-tree-utils": {
         "git": "https://github.com/shamansir/purescript-yoga-tree-utils.git",
-        "ref": "31f8dbe494e3878f92360b3fa290b5e51bbb18ae"
+        "ref": "652831bebdb3e37114cf22f7a082643b5bd286c7"
       }
     }
   },
@@ -1546,7 +1546,7 @@
     "yoga-tree-utils": {
       "type": "git",
       "url": "https://github.com/shamansir/purescript-yoga-tree-utils.git",
-      "rev": "31f8dbe494e3878f92360b3fa290b5e51bbb18ae",
+      "rev": "652831bebdb3e37114cf22f7a082643b5bd286c7",
       "dependencies": [
         "arrays",
         "foldable-traversable",

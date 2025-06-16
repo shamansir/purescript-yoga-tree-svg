@@ -2,7 +2,10 @@ module Demo where
 
 import Prelude
 
+import Data.Tuple.Nested ((/\), type (/\))
+
 import Effect (Effect)
+
 import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
@@ -11,8 +14,12 @@ import Halogen.VDom.Driver (runUI)
 
 import Type.Proxy (Proxy(..))
 
+import Control.Comonad.Cofree ((:<))
+
 import Yoga.Tree (Tree)
-import Yoga.Tree as Tree
+-- import Yoga.Tree as Tree
+import Yoga.Tree.Extended as Tree
+import Yoga.Tree.Extended.Path (Path)
 import Yoga.Tree.Svg.Component.Tree as YogaSvgTree
 
 main :: Effect Unit
@@ -41,22 +48,27 @@ data Action
 type Item = Int
 
 
+q = Tree.leaf
+
+
+ch = map Tree.leaf
+
+
 myTree :: Tree Item
 myTree =
-  Tree.mkTree 1
-    [ Tree.mkLeaf 11
-    , Tree.mkTree 12
-      [ Tree.mkTree 121 [ Tree.mkLeaf 1211, Tree.mkLeaf 1212 ]
-      , Tree.mkTree 122 [ Tree.mkLeaf 1221, Tree.mkLeaf 1222, Tree.mkLeaf 1223 ]
-      , Tree.mkLeaf 123
-      , Tree.mkTree 124 [ Tree.mkLeaf 1241 ]
-      , Tree.mkLeaf 125
+  1 :<
+    [ q 11
+    , 12 :<
+      [ 121 :< ch [ 1211, 1212 ]
+      , 122 :< ch [ 1221, 1222, 1223 ]
+      , q 123
+      , 124 :< ch [ 1241 ]
+      , q 125
       ]
-    , Tree.mkTree 13 [ Tree.mkLeaf 131, Tree.mkLeaf 132, Tree.mkLeaf 133, Tree.mkLeaf 134, Tree.mkLeaf 135, Tree.mkLeaf 136, Tree.mkLeaf 137 ]
-    , Tree.mkLeaf 14
-    , Tree.mkLeaf 15
-    , Tree.mkTree 16
-      [ Tree.mkLeaf 161 ]
+    , 13 :< ch [ 131, 132, 133, 134, 135, 136, 137 ]
+    , q 14
+    , q 15
+    , 16 :< ch [ 161 ]
     ]
 
 
@@ -73,6 +85,13 @@ component =
 
   render :: forall action. State Item -> H.ComponentHTML action Slots m
   render state =
-    HH.slot_ _tree unit YogaSvgTree.component { tree : state.tree }
+    HH.slot_ _tree unit (YogaSvgTree.component child) { tree : state.tree }
+
+  child :: forall q o. H.Component q (Path /\ Item) o m
+  child = H.mkComponent
+    { initialState : identity
+    , render : show >>> HH.text
+    , eval: H.mkEval $ H.defaultEval { handleAction = const $ pure unit }
+    }
 
   handleAction = const $ pure unit
