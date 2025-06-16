@@ -10,7 +10,8 @@
             "halogen",
             "halogen-svg-elems",
             "prelude",
-            "yoga-tree"
+            "yoga-tree",
+            "yoga-tree-utils"
           ],
           "build_plan": [
             "aff",
@@ -84,7 +85,8 @@
             "web-storage",
             "web-touchevents",
             "web-uievents",
-            "yoga-tree"
+            "yoga-tree",
+            "yoga-tree-utils"
           ]
         },
         "test": {
@@ -638,7 +640,7 @@
     "extra_packages": {
       "yoga-tree-utils": {
         "git": "https://github.com/shamansir/purescript-yoga-tree-utils.git",
-        "ref": "dcc2229a3485d934e87a0fd0383474a071f26f3c"
+        "ref": "31f8dbe494e3878f92360b3fa290b5e51bbb18ae"
       }
     }
   },
@@ -1539,6 +1541,21 @@
         "maybe",
         "prelude",
         "tailrec"
+      ]
+    },
+    "yoga-tree-utils": {
+      "type": "git",
+      "url": "https://github.com/shamansir/purescript-yoga-tree-utils.git",
+      "rev": "31f8dbe494e3878f92360b3fa290b5e51bbb18ae",
+      "dependencies": [
+        "arrays",
+        "foldable-traversable",
+        "free",
+        "maybe",
+        "prelude",
+        "strings",
+        "tuples",
+        "yoga-tree"
       ]
     }
   }

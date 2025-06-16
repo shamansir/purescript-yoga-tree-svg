@@ -7,6 +7,7 @@ package:
     - halogen-svg-elems
     - prelude
     - yoga-tree
+    - yoga-tree-utils
   test:
     main: Test.Main
     dependencies: []
@@ -16,4 +17,4 @@ workspace:
   extraPackages:
     yoga-tree-utils:
       git: https://github.com/shamansir/purescript-yoga-tree-utils.git
-      ref: dcc2229a3485d934e87a0fd0383474a071f26f3c
+      ref: 31f8dbe494e3878f92360b3fa290b5e51bbb18ae
