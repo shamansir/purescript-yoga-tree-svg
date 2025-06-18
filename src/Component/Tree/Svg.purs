@@ -1,4 +1,4 @@
-module Component.Tree.Svg where
+module Yoga.Tree.Svg.Component.Tree.Svg where
 
 import Prelude
 

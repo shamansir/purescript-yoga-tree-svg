@@ -51,9 +51,9 @@ defaults =
 
 {-| Transform a Tree to a Graph: a data structure that can be rendered to SVG.
 -}
--- toGraph : Preferences -> (a -> String) -> Tree a -> Graph
--- toGraph preferences labelToString tree =
---     loop (init preferences labelToString tree) nextStep
+toGraph :: forall a. Ord a => Preferences -> Tree a -> Graph Unit a
+toGraph preferences tree =
+    tailRec nextStep $ init preferences identity tree
 
 
 type State e a =
@@ -150,6 +150,7 @@ nextStep state =
 
 
 
+theta :: Number -> Int -> Int -> Number
 theta halfAngle i n =
     if n < 2 then
         0.0

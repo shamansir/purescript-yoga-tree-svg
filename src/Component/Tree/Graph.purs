@@ -9,6 +9,9 @@ import Prelude
 type Graph e a = Array (Edge e a)
 
 
+-- TODO: Functor, bifunctor. etc...
+
+
 type Edge e a =
     { from :: Node a, to :: Node a, edge :: e }
 
