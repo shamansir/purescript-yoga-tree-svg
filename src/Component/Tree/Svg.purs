@@ -2,6 +2,23 @@ module Component.Tree.Svg where
 
 import Prelude
 
+import Data.Array (take, concat, head) as Array
+import Data.String (split, Pattern(..)) as String
+import Data.Maybe (fromMaybe)
+
+import Halogen as H
+import Halogen.HTML (HTML)
+import Halogen.HTML as HH
+import Halogen.HTML.Properties as HHP
+import Halogen.HTML.Events as HE
+import Halogen.Svg.Attributes as HSA
+import Halogen.Svg.Attributes.FontSize (FontSize(..)) as HSA
+import Halogen.Svg.Elements as HS
+
+import Yoga.Tree.Svg.Component.Tree.Graph (Graph, Edge, Node)
+
+-- translated from: https://github.com/jxxcarlson/elm-tree-builder/blob/7.0.0/src/Tree/Svg.elm
+
 
 {-| -}
 data LabelStyle
@@ -10,64 +27,59 @@ data LabelStyle
     | FirstWord
 
 
+type Config e a =
+    { edgeColor  :: e -> HSA.Color
+    , valueColor :: a -> HSA.Color
+    , valueLabel :: a -> String
+    }
+
+
 {-| Transform: shift by dx, dy and rescale by sx,sy,sr where the
 arguments are dx, dy, sx, sy, sr, graph
--}
-{-
-transform : Float -> Float -> Float -> Float -> Float -> Graph -> Graph
+|-}
+transform :: forall e a. Number -> Number -> Number -> Number -> Number -> Graph e a -> Graph e a
 transform dx dy sx sy sr graph =
-    List.map (transformEdge dx dy sx sy sr) graph
--}
+    transformEdge dx dy sx sy sr <$> graph
 
 
 {-| Render a graph to SVG
--}
-{-
-render : LabelStyle -> Graph -> List (Svg msg)
-render labelStyle graph =
-    List.map (renderFirstEdge labelStyle) (List.take 1 graph) ++ List.map (renderEdge labelStyle) graph |> List.concat
--}
+|-}
+render :: forall e a p i. Config e a -> LabelStyle -> Graph e a -> Array (HTML p i)
+render config labelStyle graph =
+    (renderFirstEdge config labelStyle <$> Array.take 1 graph) <> (renderEdge config labelStyle <$> graph) # Array.concat
 
 
 {-| Translate and rescale and edge.
--}
-{-
-transformEdge : Float -> Float -> Float -> Float -> Float -> Edge -> Edge
+|-}
+transformEdge :: forall e a. Number -> Number -> Number -> Number -> Number -> Edge e a -> Edge e a
 transformEdge dx dy sx sy sr edge =
-    { edge | from = transformNode dx dy sx sy sr edge.from, to = transformNode dx dy sx sy sr edge.to }
--}
+    edge { from = transformNode dx dy sx sy sr edge.from, to = transformNode dx dy sx sy sr edge.to }
 
 
-{-
-transformNode : Float -> Float -> Float -> Float -> Float -> Node -> Node
+
+transformNode :: forall a. Number -> Number -> Number -> Number -> Number -> Node a -> Node a
 transformNode dx dy sx sy sr node =
-    { node | x = sx * node.x + dx, y = sy * node.y + dy, r = sr * node.r }
--}
+    node { x = sx * node.x + dx, y = sy * node.y + dy, r = sr * node.r }
 
 
-{-
-renderFirstEdge : LabelStyle -> Edge -> List (Svg msg)
-renderFirstEdge labelStyle edge =
-    [ svgLine edge.from.x edge.from.y edge.to.x edge.to.y edge.color
-    , renderNodeWithLabel labelStyle edge.from
-    , renderNode edge.to
+renderFirstEdge :: forall e a p i. Config e a -> LabelStyle -> Edge e a -> Array (HTML p i)
+renderFirstEdge config labelStyle edge =
+    [ svgLine edge.from.x edge.from.y edge.to.x edge.to.y $ config.edgeColor edge.edge
+    , renderNodeWithLabel config.valueLabel config.valueColor labelStyle edge.from
+    , renderNode config.valueColor edge.to
     ]
--}
 
 
-{-
-renderEdge : LabelStyle -> Edge -> List (Svg msg)
-renderEdge labelStyle edge =
-    [ svgLine edge.from.x edge.from.y edge.to.x edge.to.y edge.color
-    , renderNode edge.from
-    , renderNodeWithLabel labelStyle edge.to
+renderEdge :: forall e a p i. Config e a -> LabelStyle -> Edge e a -> Array (HTML p i)
+renderEdge config labelStyle edge =
+    [ svgLine edge.from.x edge.from.y edge.to.x edge.to.y $ config.edgeColor edge.edge
+    , renderNode config.valueColor edge.from
+    , renderNodeWithLabel config.valueLabel config.valueColor labelStyle edge.to
     ]
--}
 
 
-{-
-renderNodeWithLabel : LabelStyle -> Node -> Svg msg
-renderNodeWithLabel labelStyle node =
+renderNodeWithLabel :: forall a p i. (a -> String) -> (a -> HSA.Color) -> LabelStyle -> Node a -> HTML p i
+renderNodeWithLabel valueToLabel valueToColor labelStyle node =
     let
         label =
             case labelStyle of
@@ -75,54 +87,48 @@ renderNodeWithLabel labelStyle node =
                     ""
 
                 FullLabel ->
-                    node.name
+                    valueToLabel node.val
 
                 FirstWord ->
-                    node.name |> String.split " " |> List.head |> Maybe.withDefault ""
+                    valueToLabel node.val # String.split (String.Pattern " ") # Array.head # fromMaybe ""
     in
-    svg []
-        [ svgCircle node.x node.y node.r node.color
-        , text_
-            [ x (String.fromFloat (node.x + 12))
-            , y (String.fromFloat (node.y + 0))
-            , fill "gray"
+    HS.g []
+        [ svgCircle node.x node.y node.r $ valueToColor node.val
+        , HS.text
+            [ HSA.x $ node.x + 12.0
+            , HSA.y $ node.y + 0.0
+            , HSA.fill $ valueToColor node.val
             ]
-            [ text label ]
+            [ HH.text label ]
         ]
--}
 
 
-{-
-renderNode : Node -> Svg msg
-renderNode node =
-    svg []
-        [ svgCircle node.x node.y node.r node.color
+
+renderNode :: forall a p i. (a -> HSA.Color) -> Node a -> HTML p i
+renderNode valueToColor node =
+    HS.g [ ]
+        [ svgCircle node.x node.y node.r $ valueToColor node.val
         ]
--}
 
 
-{-
-svgCircle : Float -> Float -> Float -> String -> Svg msg
+
+svgCircle :: forall p i. Number -> Number -> Number -> HSA.Color -> HTML p i
 svgCircle x y rr color =
-    circle
-        [ cx (String.fromFloat x)
-        , cy (String.fromFloat y)
-        , r (String.fromFloat rr)
-        , fill color
+    HS.circle
+        [ HSA.cx x
+        , HSA.cy y
+        , HSA.r rr
+        , HSA.fill color
         ]
-        []
--}
 
 
-{-
-svgLine : Float -> Float -> Float -> Float -> String -> Svg msg
+
+svgLine :: forall p i. Number -> Number -> Number -> Number -> HSA.Color -> HTML p i
 svgLine x1_ y1_ x2_ y2_ color =
-    line
-        [ x1 (String.fromFloat x1_)
-        , y1 (String.fromFloat y1_)
-        , x2 (String.fromFloat x2_)
-        , y2 (String.fromFloat y2_)
-        , stroke color
+    HS.line
+        [ HSA.x1 x1_
+        , HSA.y1 y1_
+        , HSA.x2 x2_
+        , HSA.y2 y2_
+        , HSA.stroke color
         ]
-        []
--}
