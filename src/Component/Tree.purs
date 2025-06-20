@@ -36,6 +36,7 @@ import Yoga.Tree.Extended.Path (advance, up, find, root, traverse, fill) as Path
 import Yoga.Tree.Svg.Component.Tree.Graph as Render
 import Yoga.Tree.Svg.Component.Tree.Render as Render
 import Yoga.Tree.Svg.Component.Tree.Svg as Svg
+import Yoga.Tree.Svg.Component.Tree.SvgAlt as SvgAlt
 -- import Yoga.Tree.Zipper (Path)
 
 
@@ -79,6 +80,18 @@ component childComp =
 
   render :: State a -> _
   render state =
+    HS.svg
+      [ HSA.width 1000.0
+      , HSA.height 1000.0
+      ]
+      $ pure
+      $ HS.g
+        [ HSA.transform [ HSA.Translate 50.0 50.0 ] ]
+      $ SvgAlt.renderGraph $ Debug.spy "graph" $ SvgAlt.toGraph state.tree
+
+  {-
+  render :: State a -> _
+  render state =
     let
       aperture = 0.225
       renderPref =
@@ -110,6 +123,7 @@ component childComp =
         -- $ Svg.renderWithComponent childComp config
         $ Svg.transform 425.0 100.0 60.0 60.0 0.5
         $ graph
+  -}
 
   {-
   render state =
