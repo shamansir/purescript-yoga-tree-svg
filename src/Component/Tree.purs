@@ -86,7 +86,7 @@ component childComp =
       ]
       $ pure
       $ HS.g
-        [ HSA.transform [ HSA.Translate 50.0 50.0 ] ]
+        [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
       $ SvgAlt.renderGraph $ Debug.spy "graph" $ SvgAlt.toGraph state.tree
 
   {-
