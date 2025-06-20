@@ -126,7 +126,7 @@ component =
     }
   where
   initialState :: input -> State Item
-  initialState _ = { tree : simpleTree }
+  initialState _ = { tree : myTree }
 
   render :: forall action. State Item -> H.ComponentHTML action Slots m
   render state =
