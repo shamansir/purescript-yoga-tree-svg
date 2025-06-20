@@ -2,6 +2,8 @@ module Yoga.Tree.Svg.Component.Tree.Render where
 
 import Prelude
 
+import Debug as Debug
+
 import Control.Monad.Rec.Class (Step(..), tailRec)
 
 import Data.Number (pi, cos, sin)
@@ -16,9 +18,10 @@ import Data.Array (head, length, groupBy, drop, reverse) as Array
 import Data.Array.NonEmpty (head, toUnfoldable) as NEA
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Bifunctor (bimap)
-import Data.Foldable (foldl)
+import Data.Foldable (foldl, foldr)
 
 import Yoga.Tree (Tree)
+import Yoga.Tree as Tree
 import Yoga.Tree.Extended as Tree
 import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path as Path
@@ -133,7 +136,7 @@ nextStep state =
 
                         newMap :: Map a (Edge e a)
                         newMap =
-                            foldl (\runningMap e -> runningMap # Map.insert e.to.val e) state.edgeMap newEdges
+                            foldr (\e runningMap -> runningMap # Map.insert e.to.val e) state.edgeMap newEdges
 
                         {-
                         info :: Array (a /\ a /\ a)
@@ -180,7 +183,7 @@ displaceNode vector node =
 
 
 rotateAndRescaleEdge :: forall e a. Number -> Number -> Edge e a -> Edge e a
-rotateAndRescaleEdge scaleFacgtor theta_ edge =
+rotateAndRescaleEdge scaleFactor theta_ edge =
     let
         dx =
             edge.to.x - edge.from.x
@@ -195,10 +198,10 @@ rotateAndRescaleEdge scaleFacgtor theta_ edge =
             sin theta_
 
         xx =
-            edge.from.x + scaleFacgtor * (co * dx - si * dy)
+            edge.from.x + scaleFactor * (co * dx - si * dy)
 
         yy =
-            edge.from.y + scaleFacgtor * (si * dx + co * dy)
+            edge.from.y + scaleFactor * (si * dx + co * dy)
 
         to =
             edge.to

@@ -2,12 +2,16 @@ package:
   name: yoga-tree-svg
   dependencies:
     - console
+    - debug
     - effect
+    - graphs
     - halogen
     - halogen-svg-elems
     - prelude
     - yoga-tree
     - yoga-tree-utils
+  bundle:
+    module: Demo
   test:
     main: Test.Main
     dependencies: []

@@ -6,7 +6,9 @@
         "core": {
           "dependencies": [
             "console",
+            "debug",
             "effect",
+            "graphs",
             "halogen",
             "halogen-svg-elems",
             "prelude",
@@ -24,6 +26,7 @@
             "contravariant",
             "control",
             "datetime",
+            "debug",
             "distributive",
             "dom-indexed",
             "effect",
@@ -40,6 +43,7 @@
             "functions",
             "functors",
             "gen",
+            "graphs",
             "halogen",
             "halogen-subscriptions",
             "halogen-svg-elems",
@@ -791,6 +795,15 @@
         "tuples"
       ]
     },
+    "debug": {
+      "type": "registry",
+      "version": "6.0.2",
+      "integrity": "sha256-vmkYFuXYuELBzeauvgHG6E6Kf/Hp1dAnxwE9ByHfwSg=",
+      "dependencies": [
+        "functions",
+        "prelude"
+      ]
+    },
     "distributive": {
       "type": "registry",
       "version": "6.0.0",
@@ -1006,6 +1019,15 @@
         "tailrec",
         "tuples",
         "unfoldable"
+      ]
+    },
+    "graphs": {
+      "type": "registry",
+      "version": "8.1.0",
+      "integrity": "sha256-mLOuNSMB/kHUBEIV+pePLc1Exo5z/WmT3BHmGIGlxQw=",
+      "dependencies": [
+        "catenable-lists",
+        "ordered-collections"
       ]
     },
     "halogen": {

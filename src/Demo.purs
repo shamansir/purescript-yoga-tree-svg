@@ -20,6 +20,7 @@ import Control.Comonad.Cofree ((:<))
 
 import Yoga.Tree (Tree)
 -- import Yoga.Tree as Tree
+import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended as Tree
 import Yoga.Tree.Extended.Path (Path)
 import Yoga.Tree.Svg.Component.Tree as YogaSvgTree
@@ -56,6 +57,37 @@ q = Tree.leaf
 ch = map Tree.leaf
 
 
+{-
+
+1
+ 11
+ 12
+  121
+   1211
+   1212
+  122
+   1221
+   1222
+   1223
+  123
+  124
+   1241
+  125
+ 13
+  131
+  132
+  133
+  134
+  135
+  136
+  137
+ 14
+ 15
+ 16
+  161
+-}
+
+
 myTree :: Tree Item
 myTree =
   1 :<
@@ -74,6 +106,17 @@ myTree =
     ]
 
 
+simpleTree :: Tree Item
+simpleTree =
+  1 :<~
+    [ 11
+    , 12
+    , 13
+    -- , 14
+    -- , 15
+    ]
+
+
 component ∷ ∀ query input output m. H.Component query input output m
 component =
   H.mkComponent
@@ -83,7 +126,7 @@ component =
     }
   where
   initialState :: input -> State Item
-  initialState _ = { tree : myTree }
+  initialState _ = { tree : simpleTree }
 
   render :: forall action. State Item -> H.ComponentHTML action Slots m
   render state =

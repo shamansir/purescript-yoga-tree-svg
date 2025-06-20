@@ -2,6 +2,8 @@ module Yoga.Tree.Svg.Component.Tree where
 
 import Prelude
 
+import Debug as Debug
+
 import Type.Proxy (Proxy(..))
 
 import Data.Maybe (Maybe(..))
@@ -24,6 +26,7 @@ import Halogen.Svg.Attributes.Color as HSA
 import Halogen.Svg.Attributes.FontSize (FontSize(..)) as HSA
 import Halogen.Svg.Elements as HS
 
+import Web.UIEvent.WheelEvent as Wheel
 
 import Yoga.Tree (Tree)
 import Yoga.Tree as Tree
@@ -46,6 +49,7 @@ _item  = Proxy :: _ "item"
 
 data Action
     = Advance Int
+    | WheelChange { dx :: Number, dy :: Number }
     | GoUp
 
 
@@ -81,7 +85,7 @@ component childComp =
         Render.defaults
           { ballRadius  = 10.0
           , halfAngle   = aperture * pi
-          , scaleFactor = 0.8
+          , scaleFactor = state.zoom
           }
       graph =
         Render.toGraph
@@ -95,11 +99,16 @@ component childComp =
         }
     in
       HS.svg
-        [ HSA.width 1000.0
+        [ HSA.width  1000.0
         , HSA.height 1000.0
+        , HE.onWheel \wevt -> WheelChange
+            { dx : Wheel.deltaX wevt
+            , dy : Wheel.deltaY wevt
+            }
         ]
-        $ Svg.renderWithComponent childComp config
-        $ Svg.transform 425.0 100.0 (60.0 * state.zoom) (60.0 * state.zoom) 0.5
+        $ Svg.render config Svg.FullLabel
+        -- $ Svg.renderWithComponent childComp config
+        $ Svg.transform 425.0 100.0 60.0 60.0 0.5
         $ graph
 
   {-
@@ -124,11 +133,10 @@ component childComp =
           )
     -}
 
-    -- HH.div_
-    --   [ HH.button [ HE.onClick \_ -> Decrement ] [ HH.text "-" ]
-    --   , HH.div_ [ HH.text $ show state ]
-    --   , HH.button [ HE.onClick \_ -> Increment ] [ HH.text "+" ]
-    --   ]
-
   handleAction = case _ of
-    _ -> pure unit
+    WheelChange { dy } ->
+      H.modify_ (\state -> state { zoom = min 3.0 $ max 0.3 $ state.zoom + (dy * 0.1) })
+    Advance n ->
+      pure unit
+    GoUp ->
+      pure unit

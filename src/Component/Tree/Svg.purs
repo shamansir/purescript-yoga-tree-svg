@@ -4,7 +4,7 @@ import Prelude
 
 import Type.Proxy (Proxy(..))
 
-import Data.Array (take, concat, head) as Array
+import Data.Array (take, drop, concat, head) as Array
 import Data.String (split, Pattern(..)) as String
 import Data.Maybe (Maybe, fromMaybe)
 import Data.Tuple (fst, snd) as Tuple
@@ -59,14 +59,14 @@ transform dx dy sx sy sr graph =
 |-}
 render :: forall e a p i. Config e a -> LabelStyle -> Graph e a -> Array (HTML p i)
 render config labelStyle graph =
-    (renderFirstEdge config labelStyle <$> Array.take 1 graph) <> (renderEdge config labelStyle <$> graph) # Array.concat
+    (renderFirstEdge config labelStyle <$> Array.take 1 graph) <> (renderEdge config labelStyle <$> Array.drop 1 graph) # Array.concat
 
 
 {-| Render a graph to SVG using given component for the nodes
 |-}
 renderWithComponent :: forall e a i m. (forall cq co. H.Component cq (Path /\ a) co m) -> Config e (Path /\ a) -> Graph e (Path /\ a) -> Array (HTML (H.ComponentSlot Slots m i) i)
 renderWithComponent nodeComp config graph =
-    (renderFirstEdgeComp nodeComp config <$> Array.take 1 graph) <> (renderEdgeComp nodeComp config <$> graph) # Array.concat
+    (renderFirstEdgeComp nodeComp config <$> Array.take 1 graph) <> (renderEdgeComp nodeComp config <$> Array.drop 1 graph) # Array.concat
 
 
 {-| Translate and rescale and edge.
