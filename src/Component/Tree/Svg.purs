@@ -2,9 +2,13 @@ module Yoga.Tree.Svg.Component.Tree.Svg where
 
 import Prelude
 
+import Type.Proxy (Proxy(..))
+
 import Data.Array (take, concat, head) as Array
 import Data.String (split, Pattern(..)) as String
-import Data.Maybe (fromMaybe)
+import Data.Maybe (Maybe, fromMaybe)
+import Data.Tuple (fst, snd) as Tuple
+import Data.Tuple.Nested ((/\), type (/\))
 
 import Halogen as H
 import Halogen.HTML (HTML)
@@ -15,9 +19,18 @@ import Halogen.Svg.Attributes as HSA
 import Halogen.Svg.Attributes.FontSize (FontSize(..)) as HSA
 import Halogen.Svg.Elements as HS
 
+import Yoga.Tree.Extended.Path (Path)
 import Yoga.Tree.Svg.Component.Tree.Graph (Graph, Edge, Node)
 
 -- translated from: https://github.com/jxxcarlson/elm-tree-builder/blob/7.0.0/src/Tree/Svg.elm
+
+
+type Slots =
+  ( item :: forall q o. H.Slot q o Path
+  )
+
+
+_item  = Proxy :: _ "item"
 
 
 {-| -}
@@ -49,6 +62,13 @@ render config labelStyle graph =
     (renderFirstEdge config labelStyle <$> Array.take 1 graph) <> (renderEdge config labelStyle <$> graph) # Array.concat
 
 
+{-| Render a graph to SVG using given component for the nodes
+|-}
+renderWithComponent :: forall e a i m. (forall cq co. H.Component cq (Path /\ a) co m) -> Config e (Path /\ a) -> Graph e (Path /\ a) -> Array (HTML (H.ComponentSlot Slots m i) i)
+renderWithComponent nodeComp config graph =
+    (renderFirstEdgeComp nodeComp config <$> Array.take 1 graph) <> (renderEdgeComp nodeComp config <$> graph) # Array.concat
+
+
 {-| Translate and rescale and edge.
 |-}
 transformEdge :: forall e a. Number -> Number -> Number -> Number -> Number -> Edge e a -> Edge e a
@@ -70,11 +90,27 @@ renderFirstEdge config labelStyle edge =
     ]
 
 
+renderFirstEdgeComp :: forall e a i m. (forall cq co. H.Component cq (Path /\ a) co m) -> Config e (Path /\ a) -> Edge e (Path /\ a) -> Array (HTML (H.ComponentSlot Slots m i) i)
+renderFirstEdgeComp nodeComp config edge =
+    [ svgLine edge.from.x edge.from.y edge.to.x edge.to.y $ config.edgeColor edge.edge
+    , renderNodeComponent nodeComp edge.from
+    , renderNode config.valueColor edge.to
+    ]
+
+
 renderEdge :: forall e a p i. Config e a -> LabelStyle -> Edge e a -> Array (HTML p i)
 renderEdge config labelStyle edge =
     [ svgLine edge.from.x edge.from.y edge.to.x edge.to.y $ config.edgeColor edge.edge
     , renderNode config.valueColor edge.from
     , renderNodeWithLabel config.valueLabel config.valueColor labelStyle edge.to
+    ]
+
+
+renderEdgeComp :: forall e a i m. (forall cq co. H.Component cq (Path /\ a) co m) -> Config e (Path /\ a) -> Edge e (Path /\ a) -> Array (HTML (H.ComponentSlot Slots m i) i)
+renderEdgeComp nodeComp config edge =
+    [ svgLine edge.from.x edge.from.y edge.to.x edge.to.y $ config.edgeColor edge.edge
+    , renderNode config.valueColor edge.from
+    , renderNodeComponent nodeComp edge.to
     ]
 
 
@@ -108,6 +144,18 @@ renderNode :: forall a p i. (a -> HSA.Color) -> Node a -> HTML p i
 renderNode valueToColor node =
     HS.g [ ]
         [ svgCircle node.x node.y node.r $ valueToColor node.val
+        ]
+
+
+renderNodeComponent :: forall a i m. (forall cq co. H.Component cq (Path /\ a) co m) -> Node (Path /\ a) -> HTML (H.ComponentSlot Slots m i) i
+renderNodeComponent nodeComp node =
+    HS.g
+        [ HSA.transform [ HSA.Translate node.x node.y ] ]
+        [ HH.slot_
+            _item
+            (Tuple.fst $ node.val)
+            nodeComp
+            node.val
         ]
 
 

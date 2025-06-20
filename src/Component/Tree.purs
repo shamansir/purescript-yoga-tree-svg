@@ -57,6 +57,7 @@ type Input a =
 type State a =
     { tree :: Tree a
     , focus :: Path
+    , zoom :: Number
     }
 
 
@@ -68,9 +69,11 @@ component childComp =
     , eval: H.mkEval $ H.defaultEval { handleAction = handleAction }
     }
   where
+  initialState :: Input a -> State a
   initialState { tree } =
-    { tree, focus : Path.root }
+    { tree, focus : Path.root, zoom : 1.0 }
 
+  render :: State a -> _
   render state =
     let
       aperture = 0.225
@@ -83,7 +86,8 @@ component childComp =
       graph =
         Render.toGraph
           renderPref
-          state.tree
+          $ Path.fill
+          $ state.tree
       config =
         { edgeColor  : const $ HSA.RGB 200 200 200
         , valueColor : const $ HSA.RGB   0 100   0
@@ -94,8 +98,8 @@ component childComp =
         [ HSA.width 1000.0
         , HSA.height 1000.0
         ]
-        $ Svg.render config Svg.FullLabel
-        $ Svg.transform 425.0 100.0 60.0 60.0 0.5
+        $ Svg.renderWithComponent childComp config
+        $ Svg.transform 425.0 100.0 (60.0 * state.zoom) (60.0 * state.zoom) 0.5
         $ graph
 
   {-

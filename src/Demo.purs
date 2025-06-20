@@ -10,6 +10,8 @@ import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
+import Halogen.Svg.Elements as HS
+import Halogen.Svg.Attributes as HSA
 import Halogen.VDom.Driver (runUI)
 
 import Type.Proxy (Proxy(..))
@@ -90,7 +92,7 @@ component =
   child :: forall q o. H.Component q (Path /\ Item) o m
   child = H.mkComponent
     { initialState : identity
-    , render : show >>> HH.text
+    , render : show >>> HH.text >>> pure >>> HS.text [ HSA.fill $ HSA.RGB 0 0 0 ]
     , eval: H.mkEval $ H.defaultEval { handleAction = const $ pure unit }
     }
 
