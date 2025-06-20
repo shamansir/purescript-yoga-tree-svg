@@ -3,7 +3,7 @@ module Yoga.Tree.Svg.Component.Tree.SvgAlt where
 import Prelude
 
 import Data.Number (pi, cos, sin) as Number
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Graph (Graph)
 import Data.Graph (toMap, fromMap) as Graph
 import Data.Map (Map)
@@ -65,6 +65,7 @@ foldl' = flip <<< foldl
 
 type Position = { x :: Number, y :: Number }
 type Positioned a = { x :: Number, y :: Number, value :: a }
+type PositionedMap a = Map Path (Positioned a)
 type PositionedGraphMap a = Map Path (Positioned a /\ List Path)
 
 
@@ -73,41 +74,45 @@ positions graph =
     graphMap
         # mapWithIndex ((/\))
         # foldl (flip distribute) Map.empty
+        # fillBackChildren
         # Graph.fromMap
 
     where
         graphMap = Graph.toMap graph
         zeroPos = { x : 0.0, y : 0.0 }
-        childPos parentPos childrenCount childIndex =
-            findPosition parentPos 0.0 (2.0 * Number.pi / 3.0) childrenCount childIndex
+        childPos parentPos =
+            findPosition parentPos 0.0 (2.0 * Number.pi / 3.0)
         mergeWithValue value pos =
             { x : pos.x, y : pos.y, value }
 
-        distribute :: Path /\ a /\ List Path -> PositionedGraphMap a -> PositionedGraphMap a
+        fillBackChildren :: PositionedMap a -> PositionedGraphMap a
+        fillBackChildren = mapWithIndex \path cell -> cell /\ (Map.lookup path graphMap <#> Tuple.snd # fromMaybe Nil)
+
+        distribute :: Path /\ a /\ List Path -> PositionedMap a -> PositionedMap a
         distribute (curPath /\ curValue /\ childPaths) prevPositions =
-            case prevPositions # Map.lookup curPath <#> Tuple.fst of
+            case prevPositions # Map.lookup curPath of
                 Just { x, y } ->
                     prevPositions
                         # positionChildrenFrom { x, y } childPaths
                 Nothing ->
                     prevPositions
-                        # storePosition curPath curValue zeroPos childPaths
+                        # storePosition curPath curValue zeroPos
                         # positionChildrenFrom zeroPos childPaths
 
-        storePosition :: Path -> a -> Position -> List Path -> PositionedGraphMap a -> PositionedGraphMap a
-        storePosition path value position childPaths =
-            Map.insert path $ mergeWithValue value position /\ childPaths
+        storePosition :: Path -> a -> Position -> PositionedMap a -> PositionedMap a
+        storePosition path value position =
+            Map.insert path $ mergeWithValue value position
 
-        positionChildrenFrom :: Position -> List Path -> PositionedGraphMap a -> PositionedGraphMap a
+        positionChildrenFrom :: Position -> List Path -> PositionedMap a -> PositionedMap a
         positionChildrenFrom parentPos childPaths =
             foldl' (flip $ insertChildPos parentPos $ List.length childPaths) $ mapWithIndex (/\) (List.reverse childPaths)
 
-        insertChildPos :: Position -> Int -> Int /\ Path -> PositionedGraphMap a -> PositionedGraphMap a
+        insertChildPos :: Position -> Int -> Int /\ Path -> PositionedMap a -> PositionedMap a
         insertChildPos parentPos childrenCount (index /\ childPath) prevPositions =
-            case graphMap # Map.lookup childPath of
-                Just (value /\ childPaths) ->
+            case graphMap # Map.lookup childPath <#> Tuple.fst of
+                Just value ->
                     prevPositions
-                        # storePosition childPath value (childPos parentPos childrenCount index) childPaths
+                        # storePosition childPath value (childPos parentPos childrenCount index)
                 Nothing ->
                     prevPositions
 
@@ -130,6 +135,8 @@ renderGraph graph = foldl (<>) [] $ renderNode <$> positionsMap
                     ]
                 , HS.text
                     [ HSA.fill $ HSA.RGB 0 0 0
+                    , HSA.x 6.0
+                    , HSA.y 9.0
                     ]
                     [ HH.text $ label <> show value ]
                 ]
