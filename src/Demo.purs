@@ -3,7 +3,6 @@ module Demo where
 import Prelude
 
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Tuple.Nested ((/\), type (/\))
 import Data.Int as Int
 
 import Effect (Effect)
@@ -12,11 +11,11 @@ import Effect.Class (class MonadEffect)
 import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
-import Halogen.HTML.Events as HE
+-- import Halogen.HTML.Events as HE
 import Halogen.Svg.Elements as HS
 import Halogen.Svg.Attributes as HSA
 import Halogen.VDom.Driver (runUI)
-import Halogen.Subscription as HSS
+-- import Halogen.Subscription as HSS
 import Halogen.Query.Event (eventListener)
 
 import Type.Proxy (Proxy(..))
@@ -27,17 +26,16 @@ import Yoga.Tree (Tree)
 -- import Yoga.Tree as Tree
 import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended as Tree
-import Yoga.Tree.Extended.Path (Path)
-import Yoga.Tree.Svg as YogaSvgTree
-import Yoga.Tree.Svg.Render (Config) as YogaSvgTree
+import Yoga.Tree.Svg (NodeComponent, component_) as YogaSvgTree
+import Yoga.Tree.Svg.Render (Modes, Config) as YogaSvgTree
+import Yoga.Tree.Svg.Render (NodeMode(..), EdgeMode(..)) as YST
 
 import Web.Event.Event as E
-import Web.HTML (Window, window) as Web
-import Web.HTML.HTMLDocument as HTMLDocument
-import Web.HTML.Window (toEventTarget, fromEventTarget, innerWidth, innerHeight) as Window
-import Web.UIEvent.KeyboardEvent (KeyboardEvent)
-import Web.UIEvent.KeyboardEvent as KE
-import Web.UIEvent.KeyboardEvent.EventTypes as KET
+import Web.HTML (window) as Web
+import Web.HTML.Window (toEventTarget, innerWidth, innerHeight) as Window
+-- import Web.UIEvent.KeyboardEvent (KeyboardEvent)
+-- import Web.UIEvent.KeyboardEvent as KE
+-- import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
 
 main :: Effect Unit
@@ -68,9 +66,11 @@ data Action
 type Item = Int
 
 
+q :: forall n. n -> Tree n
 q = Tree.leaf
 
 
+ch :: forall n. Array n -> Array (Tree n)
 ch = map Tree.leaf
 
 
@@ -140,7 +140,15 @@ config =
   , edgeLabel : \_ _ _ _ -> "E"
   , valueLabel : const show
   , valueColor : const $ const $ HSA.RGB 200 200 200
-  , valueSize : const $ const { width : 80.0, height : 20.0 }
+  , valueSize : const $ const { width : 80.0, height : 25.0 }
+  }
+
+
+modes :: YogaSvgTree.Modes
+modes =
+  { nodeMode : YST.NodeWithLabel
+  , previewMode : YST.NodeWithLabel
+  , edgeMode : YST.EdgeWithLabel
   }
 
 
@@ -165,7 +173,7 @@ component =
   render :: forall action. State Item -> H.ComponentHTML action Slots m
   render state =
     HH.slot_ _tree unit
-      (YogaSvgTree.component_ config child)
+      (YogaSvgTree.component_ modes config child)
       { tree : state.tree
       , size : reduceSize $ fromMaybe defaultSize state.window
       }

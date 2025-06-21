@@ -1,40 +1,33 @@
-module Yoga.Tree.Svg where
+module Yoga.Tree.Svg
+  ( NodeComponent
+  , component, component_
+  ) where
 
 import Prelude
 
 -- import Debug as Debug
 
-import Type.Proxy (Proxy(..))
 
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Foldable (foldl, foldr)
-import Data.Traversable (traverse)
-import Data.Tuple (uncurry)
-import Data.Tuple (fst, snd) as Tuple
-import Data.Tuple.Nested ((/\), type (/\))
 import Data.Array ((:))
-import Data.Array (snoc, dropEnd, length) as Array
-import Data.Number (pi)
+import Data.Array (dropEnd, length) as Array
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.String (take) as String
 
 import Halogen as H
-import Halogen.Aff as HA
 import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Halogen.HTML.Events as HE
 import Halogen.Svg.Attributes as HSA
-import Halogen.Svg.Attributes.Color as HSA
-import Halogen.Svg.Attributes.FontSize (FontSize(..)) as HSA
 import Halogen.Svg.Elements as HS
 
 import Web.UIEvent.WheelEvent as Wheel
 
 import Yoga.Tree (Tree)
-import Yoga.Tree as Tree
-import Yoga.Tree.Extended as Tree
+import Yoga.Tree.Extended (value) as Tree
 import Yoga.Tree.Extended.Path (Path)
-import Yoga.Tree.Extended.Path (advance, up, find, root, traverse, fill, toArray, Path(..)) as Path
+import Yoga.Tree.Extended.Path (Path(..), find, root, toArray) as Path
+import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Svg.Render as SvgTree
 -- import Yoga.Tree.Zipper (Path)
 
@@ -75,16 +68,16 @@ type State a =
 type NodeComponent q o m a = SvgTree.NodeComponent q o m a
 
 
-component :: forall a query output m. Ord a => SvgTree.Config a -> H.Component query (Input a) output m
-component config = component' config Nothing
+component :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> H.Component query (Input a) output m
+component modes config = component' modes config Nothing
 
 
-component_ :: forall a query output m. Ord a => SvgTree.Config a -> (forall cq co. NodeComponent cq co m a) -> H.Component query (Input a) output m
-component_ config childComp = component' config (Just childComp)
+component_ :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> (forall cq co. NodeComponent cq co m a) -> H.Component query (Input a) output m
+component_ modes config childComp = component' modes config (Just childComp)
 
 
-component' :: forall a query output m. Ord a => SvgTree.Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> H.Component query (Input a) output m
-component' config mbChildComp =
+component' :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> H.Component query (Input a) output m
+component' modes config mbChildComp =
   H.mkComponent
     { initialState
     , render
@@ -94,14 +87,12 @@ component' config mbChildComp =
         }
     }
   where
+
   geometry :: SvgTree.Geometry
   geometry =
     { scaleFactor : 10.0
     , baseRadius : 10.0
     , scaleLimit : { min : 0.2, max : 50.0 }
-    , nodeMode : SvgTree.NodeWithLabel
-    , edgeMode : SvgTree.EdgeWithLabel
-    , previewMode : SvgTree.NodeWithLabel
     }
 
   initialState :: Input a -> State a
@@ -150,7 +141,7 @@ component' config mbChildComp =
   previewAt tree previewPath =
     case Path.find previewPath tree of
       Just previewNode ->
-        SvgTree.renderPreview geometry.previewMode config previewPath $ Tree.value previewNode
+        SvgTree.renderPreview modes.previewMode config previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
 
@@ -172,9 +163,9 @@ component' config mbChildComp =
           $ pure
           $ HS.g
             [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
-            $ SvgTree.renderGraph' (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
+            $ SvgTree.renderGraph' modes (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
             -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
-            $ SvgTree.toGraph' state.focus
+            $ Tree.toGraph' state.focus
             $ fromMaybe state.tree
             $ Path.find state.focus state.tree
       , HH.div
@@ -229,13 +220,13 @@ component' config mbChildComp =
       H.modify_ _ { zoom = 1.0 }
     FocusOn path ->
       H.modify_ _ { focus = path }
-    NodeClick path val ->
+    NodeClick path _ ->
       H.modify_ _ { focus = path }
     NodeOver path _ ->
       H.modify_ _ { preview = Focused path }
     NodeOut path _ ->
       H.modify_ _ { preview = LostFocus path }
-    Advance n ->
+    Advance _ ->
       pure unit
     GoUp ->
       pure unit

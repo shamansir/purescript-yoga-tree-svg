@@ -1,29 +1,34 @@
-module Yoga.Tree.Svg.Render where
+module Yoga.Tree.Svg.Render
+    ( Slots, _item
+    , NodeMode(..), EdgeMode(..)
+    , Modes, Config, Events, Geometry
+    , NodeComponent, NodeComponentInput
+    , renderGraph, renderGraph_, renderGraph'
+    , renderPreview, renderPreview_, renderPreview'
+    )
+    where
 
 import Prelude
 
 import Type.Proxy (Proxy(..))
 
-import Data.Number (pi, cos, sin) as Number
+import Data.Number (pi) as Number
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Graph (Graph, Edge)
 import Data.Graph (toMap, fromMap) as Graph
-import Data.Map (Map)
 import Data.Map (empty, lookup, insert) as Map
 import Data.Array (fromFoldable, toUnfoldable) as Array
 import Data.Tuple (fst, snd) as Tuple
-import Data.Int (toNumber) as Int
-import Data.List (List(..), (:))
+import Data.List (List(..))
 import Data.List (length, reverse) as List
 import Data.Foldable (class Foldable, foldl)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Tuple.Nested ((/\), type (/\))
 import Data.Bifunctor (lmap)
 
-import Yoga.Tree (Tree)
-import Yoga.Tree.Extended as Tree
-import Yoga.Tree.Extended.Path (Path(..))
-import Yoga.Tree.Extended.Path as Path
+import Yoga.Tree.Extended.Path (Path)
+
+import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale)
 
 
 import Halogen as H
@@ -54,80 +59,9 @@ data EdgeMode
     | EdgeWithLabel
 
 
-toGraph :: forall a. Tree a -> Graph Path a
-toGraph = toGraph' Path.root
-
-
-toGraph' :: forall a. Path -> Tree a -> Graph Path a
-toGraph' (Path root) = Path.fill >>> Tree.break breakRoot >>> Graph.fromMap
-    where
-        breakNode theMap (path /\ a) xs =
-            theMap
-                # Map.insert
-                    (alignWithRoot path)
-                    (a /\
-                        (Array.toUnfoldable
-                             $  alignWithRoot
-                            <$> Tuple.fst
-                            <$> Tree.value
-                            <$> xs
-                        )
-                    )
-                # foldl' (Tree.break <<< breakNode) xs
-        breakRoot =
-            breakNode Map.empty
-        alignWithRoot (Path path) =
-            Path $ root <> path
-
-
-findPosition :: Number -> Position -> Number -> Number -> Int -> Int -> Position
-findPosition baseRadius parent startAngle endAngle count index =
-    let
-        currentAngle = startAngle + ((endAngle - startAngle) / Int.toNumber count) * Int.toNumber index
-
-        co = Number.cos currentAngle
-        si = Number.sin currentAngle
-
-        x = parent.x + (co * baseRadius - si * baseRadius)
-        y = parent.y + (si * baseRadius + co * baseRadius)
-    in
-    { x, y }
-
-
-rotateBy :: Position -> Position -> Number -> Number -> Position
-rotateBy parent current scaleFactor theta =
-    let
-        dx = current.x - parent.x
-        dy = current.y - parent.y
-        co = Number.cos theta
-        si = Number.sin theta
-        xx = parent.x + scaleFactor * (co * dx - si * dy)
-        yy = parent.y + scaleFactor * (si * dx + co * dy)
-    in
-    { x : xx, y : yy }
-
-
-
 
 foldl' :: forall f a b. Foldable f => (b -> a -> b) -> f a -> b -> b
 foldl' = flip <<< foldl
-
-
-type Position = { x :: Number, y :: Number }
-type Size = { width :: Number, height :: Number }
-type Positioned a = { x :: Number, y :: Number, width :: Number, height :: Number, value :: a }
-type PositionedMap a = Map Path (Positioned a)
-type PositionedGraphMap a = Map Path (Positioned a /\ List Path)
-
-
-transform :: forall a. Number -> Number -> Number -> Number -> Positioned a -> Positioned a
-transform dx dy sx sy node =
-    node { x = sx * node.x + dx, y = sy * node.y + dy, width = sx * node.width, height = sy * node.height }
-
-
-scale :: forall a. Number -> Positioned a -> Positioned a
-scale factor =
-    transform 0.0 0.0 factor factor
 
 
 distributePositions :: forall a. Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned a)
@@ -196,13 +130,17 @@ type Events i a =
     }
 
 
+type Modes =
+    { nodeMode :: NodeMode
+    , edgeMode :: EdgeMode
+    , previewMode :: NodeMode
+    }
+
+
 type Geometry =
     { scaleFactor :: Number
     , baseRadius :: Number
     , scaleLimit :: { min :: Number, max :: Number }
-    , nodeMode :: NodeMode
-    , edgeMode :: EdgeMode
-    , previewMode :: NodeMode
     }
 
 
@@ -216,16 +154,16 @@ type NodeComponentInput a =
     }
 
 
-renderGraph :: forall a p i. Geometry -> Config a -> Events i a -> Graph Path a -> Array (HTML p i)
-renderGraph geom config = renderGraph' geom config Nothing
+renderGraph :: forall a p i. Modes -> Geometry -> Config a -> Events i a -> Graph Path a -> Array (HTML p i)
+renderGraph modes geom config = renderGraph' modes geom config Nothing
 
 
-renderGraph_ :: forall a p i m. Geometry -> Config a -> (forall cq co. NodeComponent cq co m a) -> Events i a -> Graph Path a -> Array (HTML p i)
-renderGraph_ geom config childComp = renderGraph' geom config (Just childComp)
+renderGraph_ :: forall a p i m. Modes -> Geometry -> Config a -> (forall cq co. NodeComponent cq co m a) -> Events i a -> Graph Path a -> Array (HTML p i)
+renderGraph_ modes geom config childComp = renderGraph' modes geom config (Just childComp)
 
 
-renderGraph' :: forall a p i m. Geometry -> Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> Events i a -> Graph Path a -> Array (HTML p i)
-renderGraph' geom config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
+renderGraph' :: forall a p i m. Modes -> Geometry -> Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> Events i a -> Graph Path a -> Array (HTML p i)
+renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
         positionsMap :: PositionedGraphMap a
         positionsMap = Graph.toMap $ distributePositions geom config.valueSize graph
@@ -238,14 +176,14 @@ renderGraph' geom config mbComponent events graph = foldl (<>) [] $ mapWithIndex
                 , HE.onMouseOut  $ const $ events.valueOut   nodePath value
                 ]
                 $ pure
-                $ _renderValue geom.nodeMode config mbComponent { x : 0.0, y : 0.0 } nodePath value
+                $ _renderValue modes.nodeMode config mbComponent { x : 0.0, y : 0.0 } nodePath value
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
                     HS.g
                         [ HHP.style "cursor: cross; pointer-events: none;" ]
                         $ pure
-                        $ _renderEdge geom.edgeMode config
+                        $ _renderEdge modes.edgeMode config
                         $
                             { start : { path : parentPath, pos : { x : parent.x, y: parent.y }, value : parent.value }
                             , end   : { path : childPath,  pos : { x : child.x,  y: child.y  }, value : child.value  }
@@ -270,19 +208,25 @@ renderPreview' nodeMode config mbComponent nodePath value =
         previewSize = config.valueSize nodePath value
         position =
             { x : previewSize.width / 2.0
-            , y :  previewSize.height / 2.0
+            , y : previewSize.height / 2.0
             }
     in
         HS.svg
             [ HSA.width  $ previewSize.width
             , HSA.height $ previewSize.height
             ]
-            $ pure
-            $ HS.g
+            [ HS.rect
+                [ HSA.width  $ previewSize.width
+                , HSA.height $ previewSize.height
+                , HSA.stroke $ HSA.RGB 0 0 0
+                , HSA.fill $ HSA.RGBA 0 0 0 0.0
+                ]
+            , HS.g
                 [ HHP.style "pointer-events: none;"
                 ]
-            $ pure
-            $ _renderValue nodeMode config mbComponent position nodePath value
+                $ pure
+                $ _renderValue nodeMode config mbComponent position nodePath value
+            ]
 
 
 type EdgeJoint a =
