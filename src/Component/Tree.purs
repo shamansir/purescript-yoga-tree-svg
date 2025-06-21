@@ -48,14 +48,17 @@ type Slots =
 _item  = Proxy :: _ "item"
 
 
-data Action
-    = Advance Int
+data Action a
+    = Receive (Input a)
     | WheelChange { dx :: Number, dy :: Number }
+    | ResetZoom
+    | Advance Int
     | GoUp
 
 
 type Input a =
     { tree :: Tree a
+    , size :: { width :: Number, height :: Number }
     }
 
 
@@ -63,6 +66,7 @@ type State a =
     { tree :: Tree a
     , focus :: Path
     , zoom :: Number
+    , size :: { width :: Number, height :: Number }
     }
 
 
@@ -71,7 +75,10 @@ component config childComp =
   H.mkComponent
     { initialState
     , render
-    , eval: H.mkEval $ H.defaultEval { handleAction = handleAction }
+    , eval: H.mkEval $ H.defaultEval
+        { handleAction = handleAction
+        , receive = Just <<< Receive
+        }
     }
   where
   geometry :: SvgAlt.Geometry
@@ -82,26 +89,43 @@ component config childComp =
     }
 
   initialState :: Input a -> State a
-  initialState { tree } =
-    { tree, focus : Path.root, zoom : 1.0 }
+  initialState { tree, size } =
+    { tree, focus : Path.root, zoom : 1.0, size }
+
+  receive :: Input a -> State a -> State a
+  receive { tree, size } =
+    _ { size = size, tree = tree }
 
   render :: State a -> _
   render state =
     HH.div
-      []
-      [ HS.svg
-        [ HSA.width 1000.0
-        , HSA.height 1000.0
-        , HE.onWheel \wevt -> WheelChange
-            { dx : Wheel.deltaX wevt
-            , dy : Wheel.deltaY wevt
-            }
-        ]
+      [ HP.style "oveflow: hidden;" ]
+      [ HH.div
+        [ HP.style "position: absolute; left: 0; top: 0;" ]
         $ pure
-        $ HS.g
-          [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
-          $ SvgAlt.renderGraph (geometry { scaleFactor = state.zoom * 5.0 }) config
-          $ SvgAlt.toGraph state.tree
+        $ HS.svg
+          [ HSA.width state.size.width
+          , HSA.height state.size.height
+          , HE.onWheel \wevt -> WheelChange
+              { dx : Wheel.deltaX wevt
+              , dy : Wheel.deltaY wevt
+              }
+          ]
+          $ pure
+          $ HS.g
+            [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
+            $ SvgAlt.renderGraph (geometry { scaleFactor = state.zoom * 5.0 }) config
+            $ SvgAlt.toGraph state.tree
+      , HH.div
+        [ HP.style "position: absolute; right: 0; top: 0;" ]
+        [ HH.button
+          [ HP.style "cursor: pointer; pointer-events: all;"
+          , HE.onClick $ const ResetZoom
+          ]
+          [ HH.text "Reset Zoom" ]
+        , HH.text $ "Zoom : " <> show state.zoom
+        , HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height
+        ]
       ]
 
   {-
@@ -163,6 +187,8 @@ component config childComp =
     -}
 
   handleAction = case _ of
+    Receive input ->
+      H.modify_ $ receive input
     WheelChange { dy } ->
       H.modify_ (\state ->
         state
@@ -172,6 +198,8 @@ component config childComp =
             $ state.zoom + (dy * 0.1)
           }
       )
+    ResetZoom ->
+      H.modify_ _ { zoom = 1.0 }
     Advance n ->
       pure unit
     GoUp ->
