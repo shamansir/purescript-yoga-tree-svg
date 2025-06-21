@@ -28,7 +28,7 @@ import Halogen as H
 import Halogen.HTML (HTML)
 import Halogen.HTML as HH
 import Halogen.HTML.Properties as HHP
--- import Halogen.HTML.Events as HE
+import Halogen.HTML.Events as HE
 import Halogen.Svg.Attributes as HSA
 import Halogen.Svg.Elements as HS
 
@@ -148,7 +148,13 @@ type Config a =
     { valueLabel :: Path -> a -> String
     , valueColor :: Path -> a -> HSA.Color
     , edgeColor :: Path -> a -> Path -> a -> HSA.Color
+    , edgeLabel :: Path -> a -> Path -> a -> String
     , valueSize :: Path -> a -> { width :: Number, height :: Number }
+    }
+
+
+type Events i a =
+    { valueClick :: Path -> a -> i
     }
 
 
@@ -159,14 +165,16 @@ type Geometry =
     }
 
 
-renderGraph :: forall a p i. Geometry -> Config a -> Graph Path a -> Array (HTML p i)
-renderGraph geom config graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
+renderGraph :: forall a p i. Geometry -> Config a -> Events i a -> Graph Path a -> Array (HTML p i)
+renderGraph geom config events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
         positionsMap :: PositionedGraphMap a
         positionsMap = Graph.toMap $ distributePositions geom config.valueSize graph
-        renderValue nodePath label { x, y, value } =
+        renderValue nodePath { x, y, value } =
             HS.g
-                [ HSA.transform $ pure $ HSA.Translate x y ]
+                [ HSA.transform $ pure $ HSA.Translate x y
+                , HE.onClick $ const $ events.valueClick nodePath value
+                ]
                 [ HS.circle
                     [ HSA.cx 0.0
                     , HSA.cy 0.0
@@ -179,19 +187,27 @@ renderGraph geom config graph = foldl (<>) [] $ mapWithIndex renderNode position
                     , HSA.x 6.0
                     , HSA.y 9.0
                     ]
-                    [ HH.text $ label <> config.valueLabel nodePath value ]
+                    [ HH.text $ config.valueLabel nodePath value ]
                 ]
         renderChild parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
-                    HS.line
-                        [ HSA.x1 parent.x
-                        , HSA.y1 parent.y
-                        , HSA.x2 child.x
-                        , HSA.y2 child.y
-                        , HSA.stroke $ config.edgeColor parentPath parent.value childPath child.value
+                    HS.g
+                        []
+                        [ HS.line
+                            [ HSA.x1 parent.x
+                            , HSA.y1 parent.y
+                            , HSA.x2 child.x
+                            , HSA.y2 child.y
+                            , HSA.stroke $ config.edgeColor parentPath parent.value childPath child.value
+                            ]
+                        , HS.text
+                            [ HSA.x $ parent.x + ((child.x - parent.x) / 2.0)
+                            , HSA.y $ parent.y + ((child.y - parent.y) / 2.0)
+                            ]
+                            [ HH.text $ config.edgeLabel parentPath parent.value childPath child.value ]
                         ]
                 Nothing -> HS.g [] []
         renderNode nodePath (a /\ paths) =
-                [ renderValue nodePath "node" a
+                [ renderValue nodePath a
                 ] <> (renderChild nodePath a <$> Array.fromFoldable paths)

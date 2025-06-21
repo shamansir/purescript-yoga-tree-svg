@@ -137,6 +137,7 @@ simpleTree =
 config :: YogaSvgTree.Config Item
 config =
   { edgeColor : \_ _ _ _ -> HSA.RGB 0 0 0
+  , edgeLabel : \_ _ _ _ -> "E"
   , valueLabel : const show
   , valueColor : const $ const $ HSA.RGB 200 200 200
   , valueSize : const $ const { width : 20.0, height : 20.0 }

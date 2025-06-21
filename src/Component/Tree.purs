@@ -6,15 +6,16 @@ import Debug as Debug
 
 import Type.Proxy (Proxy(..))
 
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Foldable (foldl, foldr)
 import Data.Traversable (traverse)
 import Data.Tuple (uncurry)
 import Data.Tuple (fst, snd) as Tuple
 import Data.Tuple.Nested ((/\), type (/\))
 import Data.Array ((:))
-import Data.Array (snoc) as Array
+import Data.Array (snoc, dropEnd, length) as Array
 import Data.Number (pi)
+import Data.FunctorWithIndex (mapWithIndex)
 
 import Halogen as H
 import Halogen.Aff as HA
@@ -32,7 +33,7 @@ import Yoga.Tree (Tree)
 import Yoga.Tree as Tree
 import Yoga.Tree.Extended as Tree
 import Yoga.Tree.Extended.Path (Path)
-import Yoga.Tree.Extended.Path (advance, up, find, root, traverse, fill) as Path
+import Yoga.Tree.Extended.Path (advance, up, find, root, traverse, fill, toArray, Path(..)) as Path
 import Yoga.Tree.Svg.Component.Tree.Graph as Render
 import Yoga.Tree.Svg.Component.Tree.Render as Render
 import Yoga.Tree.Svg.Component.Tree.Svg as Svg
@@ -51,6 +52,8 @@ _item  = Proxy :: _ "item"
 data Action a
     = Receive (Input a)
     | WheelChange { dx :: Number, dy :: Number }
+    | FocusOn Path
+    | NodeClick Path a
     | ResetZoom
     | Advance Int
     | GoUp
@@ -96,6 +99,33 @@ component config childComp =
   receive { tree, size } =
     _ { size = size, tree = tree }
 
+  events :: SvgAlt.Events (Action a) a
+  events =
+    { valueClick : \path val -> NodeClick path val
+    }
+
+  rootButton :: _
+  rootButton =
+    HH.button
+          [ HP.style "cursor: pointer; pointer-events: all;"
+          , HE.onClick $ const $ FocusOn $ Path.root
+          ]
+          [ HH.text $ "*" ]
+
+  pathButton :: Array Int -> Int -> Int -> _
+  pathButton fullPath pIndex pValue =
+    let
+      pathLen = Array.length fullPath
+      isLast = pIndex == (pathLen - 1)
+    in
+    if not isLast
+      then HH.button
+          [ HP.style "cursor: pointer; pointer-events: all;"
+          , HE.onClick $ const $ FocusOn $ Path.Path $ Array.dropEnd (pathLen - pIndex) fullPath
+          ]
+          [ HH.text $ show pValue ]
+      else HH.text $ show pValue
+
   render :: State a -> _
   render state =
     HH.div
@@ -114,8 +144,11 @@ component config childComp =
           $ pure
           $ HS.g
             [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
-            $ SvgAlt.renderGraph (geometry { scaleFactor = state.zoom * 5.0 }) config
-            $ SvgAlt.toGraph state.tree
+            $ SvgAlt.renderGraph (geometry { scaleFactor = state.zoom * 5.0 }) config events
+            $ SvgAlt.toGraph
+            -- $ state.tree
+            $ fromMaybe state.tree
+            $ Path.find state.focus state.tree
       , HH.div
         [ HP.style "position: absolute; right: 0; top: 0;" ]
         [ HH.button
@@ -126,6 +159,16 @@ component config childComp =
         , HH.text $ "Zoom : " <> show state.zoom
         , HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height
         ]
+      , HH.div
+          [ HP.style "position: absolute; right: 0; top: 20px;" ]
+          $ pure
+          $ case Path.toArray state.focus of
+              [] -> HH.text "*"
+              path ->
+                HH.div
+                  []
+                  $ rootButton
+                  : mapWithIndex (pathButton path) path
       ]
 
   {-
@@ -200,6 +243,10 @@ component config childComp =
       )
     ResetZoom ->
       H.modify_ _ { zoom = 1.0 }
+    FocusOn path ->
+      H.modify_ _ { focus = path }
+    NodeClick path val ->
+      H.modify_ _ { focus = path }
     Advance n ->
       pure unit
     GoUp ->
