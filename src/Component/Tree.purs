@@ -16,6 +16,7 @@ import Data.Array ((:))
 import Data.Array (snoc, dropEnd, length) as Array
 import Data.Number (pi)
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.String (take) as String
 
 import Halogen as H
 import Halogen.Aff as HA
@@ -54,6 +55,8 @@ data Action a
     | WheelChange { dx :: Number, dy :: Number }
     | FocusOn Path
     | NodeClick Path a
+    | NodeOver  Path a
+    | NodeOut   Path a
     | ResetZoom
     | Advance Int
     | GoUp
@@ -65,9 +68,16 @@ type Input a =
     }
 
 
+data Preview
+    = None
+    | Focused Path
+    | LostFocus Path
+
+
 type State a =
     { tree :: Tree a
     , focus :: Path
+    , preview :: Preview
     , zoom :: Number
     , size :: { width :: Number, height :: Number }
     }
@@ -93,7 +103,7 @@ component config childComp =
 
   initialState :: Input a -> State a
   initialState { tree, size } =
-    { tree, focus : Path.root, zoom : 1.0, size }
+    { tree, focus : Path.root, zoom : 1.0, size, preview : None }
 
   receive :: Input a -> State a -> State a
   receive { tree, size } =
@@ -101,7 +111,9 @@ component config childComp =
 
   events :: SvgAlt.Events (Action a) a
   events =
-    { valueClick : \path val -> NodeClick path val
+    { valueClick : NodeClick
+    , valueOver  : NodeOver
+    , valueOut   : NodeOut
     }
 
   rootButton :: _
@@ -125,6 +137,13 @@ component config childComp =
           ]
           [ HH.text $ show pValue ]
       else HH.text $ show pValue
+
+  previewAt tree previewPath =
+    case Path.find previewPath tree of
+      Just previewNode ->
+        SvgAlt.renderPreview config previewPath $ Tree.value previewNode
+      Nothing ->
+        HH.text "?"
 
   render :: State a -> _
   render state =
@@ -156,7 +175,7 @@ component config childComp =
           , HE.onClick $ const ResetZoom
           ]
           [ HH.text "Reset Zoom" ]
-        , HH.text $ "Zoom : " <> show state.zoom
+        , HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom)
         , HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height
         ]
       , HH.div
@@ -169,6 +188,20 @@ component config childComp =
                   []
                   $ rootButton
                   : mapWithIndex (pathButton path) path
+      , HH.div
+          [ HP.style $ "position: absolute; right: 0; top: 100px; " <> case state.preview of
+            Focused _ -> "opacity: 1.0;"
+            LostFocus _ -> "opacity: 0.7;"
+            None -> ""
+          ]
+          $ pure
+          $ case state.preview of
+              Focused previewPath ->
+                previewAt state.tree previewPath
+              LostFocus previewPath ->
+                previewAt state.tree previewPath
+              None ->
+                HH.text ""
       ]
 
   {-
@@ -247,6 +280,10 @@ component config childComp =
       H.modify_ _ { focus = path }
     NodeClick path val ->
       H.modify_ _ { focus = path }
+    NodeOver path _ ->
+      H.modify_ _ { preview = Focused path }
+    NodeOut path _ ->
+      H.modify_ _ { preview = LostFocus path }
     Advance n ->
       pure unit
     GoUp ->

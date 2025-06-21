@@ -170,6 +170,8 @@ type Config a =
 
 type Events i a =
     { valueClick :: Path -> a -> i
+    , valueOver  :: Path -> a -> i
+    , valueOut   :: Path -> a -> i
     }
 
 
@@ -188,7 +190,10 @@ renderGraph geom config events graph = foldl (<>) [] $ mapWithIndex renderNode p
         renderValue nodePath { x, y, value } =
             HS.g
                 [ HSA.transform $ pure $ HSA.Translate x y
-                , HE.onClick $ const $ events.valueClick nodePath value
+                , HHP.style "cursor: pointer; pointer-events: all;"
+                , HE.onClick     $ const $ events.valueClick nodePath value
+                , HE.onMouseOver $ const $ events.valueOver  nodePath value
+                , HE.onMouseOut  $ const $ events.valueOut   nodePath value
                 ]
                 [ HS.circle
                     [ HSA.cx 0.0
@@ -204,11 +209,11 @@ renderGraph geom config events graph = foldl (<>) [] $ mapWithIndex renderNode p
                     ]
                     [ HH.text $ config.valueLabel nodePath value ]
                 ]
-        renderChild parentPath parent childPath =
+        renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
                     HS.g
-                        []
+                        [ HHP.style "cursor: cross; pointer-events: none;" ]
                         [ HS.line
                             [ HSA.x1 parent.x
                             , HSA.y1 parent.y
@@ -224,5 +229,33 @@ renderGraph geom config events graph = foldl (<>) [] $ mapWithIndex renderNode p
                         ]
                 Nothing -> HS.g [] []
         renderNode nodePath (a /\ paths) =
-                [ renderValue nodePath a
-                ] <> (renderChild nodePath a <$> Array.fromFoldable paths)
+            (renderEdge nodePath a <$> Array.fromFoldable paths)
+            <> [ renderValue nodePath a ]
+
+
+renderPreview :: forall a p i. Config a -> Path -> a -> HTML p i
+renderPreview config nodePath value =
+    let
+        previewSize = config.valueSize nodePath value
+    in
+        HS.svg
+            [ HSA.width  $ previewSize.width
+            , HSA.height $ previewSize.height
+            ]
+            $ pure $ HS.g
+                [ HHP.style "pointer-events: none;"
+                ]
+                [ HS.circle
+                    [ HSA.cx $ previewSize.width / 2.0
+                    , HSA.cy $ previewSize.height / 2.0
+                    , HSA.r 5.0
+                    , HSA.fill $ config.valueColor nodePath value
+                    , HSA.stroke $ HSA.RGB 0 0 0
+                    ]
+                , HS.text
+                    [ HSA.fill $ config.valueColor nodePath value
+                    , HSA.x $ (previewSize.width / 2.0) + 6.0
+                    , HSA.y $ (previewSize.height / 2.0) + 9.0
+                    ]
+                    [ HH.text $ config.valueLabel nodePath value ]
+                ]
