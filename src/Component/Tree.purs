@@ -2,7 +2,7 @@ module Yoga.Tree.Svg.Component.Tree where
 
 import Prelude
 
-import Debug as Debug
+-- import Debug as Debug
 
 import Type.Proxy (Proxy(..))
 
@@ -121,7 +121,7 @@ component config childComp =
     if not isLast
       then HH.button
           [ HP.style "cursor: pointer; pointer-events: all;"
-          , HE.onClick $ const $ FocusOn $ Path.Path $ Array.dropEnd (pathLen - pIndex) fullPath
+          , HE.onClick $ const $ FocusOn $ Path.Path $ Array.dropEnd (max 0 $ pathLen - pIndex - 1) fullPath
           ]
           [ HH.text $ show pValue ]
       else HH.text $ show pValue
