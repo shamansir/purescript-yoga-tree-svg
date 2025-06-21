@@ -211,11 +211,11 @@ component' modes config mbChildComp =
           $ case state.preview of
               Focused previewPath ->
                 if not $ Set.member previewPath state.pinned then
-                  wrapPinUnpin state.pinned state.tree previewPath
+                  wrapPinUnpin false state.pinned state.tree previewPath
                 else HH.text ""
               LostFocus previewPath ->
                 if not $ Set.member previewPath state.pinned then
-                  wrapPinUnpin state.pinned state.tree previewPath
+                  wrapPinUnpin false state.pinned state.tree previewPath
                 else HH.text ""
               None ->
                 HH.text ""
@@ -224,11 +224,11 @@ component' modes config mbChildComp =
       , HH.div
           [ HP.style $ "position: absolute; right: 0; top: 200px;"
           ]
-          $ wrapPinUnpin state.pinned state.tree
+          $ wrapPinUnpin true state.pinned state.tree
           <$> Array.fromFoldable state.pinned
       ]
 
-  wrapPinUnpin pinned tree nodePath =
+  wrapPinUnpin allowGo pinned tree nodePath =
     HH.div
       []
       [ if not $ Set.member nodePath pinned then
@@ -244,6 +244,13 @@ component' modes config mbChildComp =
             ]
             [ HH.text "Unpin" ]
       , HH.text $ show nodePath
+      , if allowGo then
+          HH.button
+              [ HP.style "cursor: pointer; pointer-events: all;"
+              , HE.onClick $ const $ FocusOn nodePath
+              ]
+              [ HH.text "Go" ]
+          else HH.text ""
       , previewAt tree nodePath
       ]
 
