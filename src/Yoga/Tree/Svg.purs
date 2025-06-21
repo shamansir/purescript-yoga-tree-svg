@@ -10,9 +10,11 @@ import Prelude
 
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Array ((:))
-import Data.Array (dropEnd, length) as Array
+import Data.Array (fromFoldable, dropEnd, length) as Array
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.String (take) as String
+import Data.Set (Set)
+import Data.Set (empty, insert, delete, isEmpty, member) as Set
 
 import Halogen as H
 import Halogen.HTML as HH
@@ -40,8 +42,10 @@ data Action a
     | NodeOver  Path a
     | NodeOut   Path a
     | ResetZoom
-    | Advance Int
-    | GoUp
+    | Pin Path
+    | UnPin Path
+    -- | Advance Int
+    -- | GoUp
 
 
 type Input a =
@@ -60,6 +64,7 @@ type State a =
     { tree :: Tree a
     , focus :: Path
     , preview :: Preview
+    , pinned :: Set Path
     , zoom :: Number
     , size :: { width :: Number, height :: Number }
     }
@@ -97,7 +102,7 @@ component' modes config mbChildComp =
 
   initialState :: Input a -> State a
   initialState { tree, size } =
-    { tree, focus : Path.root, zoom : 1.0, size, preview : None }
+    { tree, focus : Path.root, zoom : 1.0, size, preview : None, pinned : Set.empty }
 
   receive :: Input a -> State a -> State a
   receive { tree, size } =
@@ -205,11 +210,41 @@ component' modes config mbChildComp =
           $ pure
           $ case state.preview of
               Focused previewPath ->
-                previewAt state.tree previewPath
+                if not $ Set.member previewPath state.pinned then
+                  wrapPinUnpin state.pinned state.tree previewPath
+                else HH.text ""
               LostFocus previewPath ->
-                previewAt state.tree previewPath
+                if not $ Set.member previewPath state.pinned then
+                  wrapPinUnpin state.pinned state.tree previewPath
+                else HH.text ""
               None ->
                 HH.text ""
+
+      {- Current Pinned -}
+      , HH.div
+          [ HP.style $ "position: absolute; right: 0; top: 200px;"
+          ]
+          $ wrapPinUnpin state.pinned state.tree
+          <$> Array.fromFoldable state.pinned
+      ]
+
+  wrapPinUnpin pinned tree nodePath =
+    HH.div
+      []
+      [ if not $ Set.member nodePath pinned then
+          HH.button
+            [ HP.style "cursor: pointer; pointer-events: all;"
+            , HE.onClick $ const $ Pin nodePath
+            ]
+            [ HH.text "Pin" ]
+        else
+          HH.button
+            [ HP.style "cursor: pointer; pointer-events: all;"
+            , HE.onClick $ const $ UnPin nodePath
+            ]
+            [ HH.text "Unpin" ]
+      , HH.text $ show nodePath
+      , previewAt tree nodePath
       ]
 
   handleAction = case _ of
@@ -234,7 +269,7 @@ component' modes config mbChildComp =
       H.modify_ _ { preview = Focused path }
     NodeOut path _ ->
       H.modify_ _ { preview = LostFocus path }
-    Advance _ ->
-      pure unit
-    GoUp ->
-      pure unit
+    Pin path ->
+      H.modify_ \s -> s { pinned = s.pinned # Set.insert path }
+    UnPin path ->
+      H.modify_ \s -> s { pinned = s.pinned # Set.delete path }

@@ -240,7 +240,7 @@ renderPreview' nodeMode config mbComponent nodePath value =
                 [ HHP.style "pointer-events: none;"
                 ]
                 $ pure
-                $ _renderValue nodeMode config _item mbComponent position nodePath value
+                $ _renderValue nodeMode config _preview mbComponent position nodePath value
             ]
 
 
