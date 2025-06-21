@@ -63,6 +63,7 @@ data Preview
 type State a =
     { tree :: Tree a
     , focus :: Path
+    , prevFocus :: Maybe Path
     , preview :: Preview
     , pinned :: Set Path
     , zoom :: Number
@@ -102,7 +103,7 @@ component' modes config mbChildComp =
 
   initialState :: Input a -> State a
   initialState { tree, size } =
-    { tree, focus : Path.root, zoom : 1.0, size, preview : None, pinned : Set.empty }
+    { tree, focus : Path.root, prevFocus : Nothing, zoom : 1.0, size, preview : None, pinned : Set.empty }
 
   receive :: Input a -> State a -> State a
   receive { tree, size } =
@@ -120,11 +121,7 @@ component' modes config mbChildComp =
     let
       mbValueAt = tree # Path.find Path.root <#> Tree.value
       buttonLabel = maybe "*" (\val -> toLabel Path.root val <> " [*]") mbValueAt
-    in  HH.button
-          [ HP.style "cursor: pointer; pointer-events: all;"
-          , HE.onClick $ const $ FocusOn $ Path.root
-          ]
-          [ HH.text buttonLabel ]
+    in qbutton buttonLabel $ FocusOn Path.root
 
   pathButton :: (Path -> a -> String) -> Tree a -> Array Int -> Int -> Int -> _
   pathButton toLabel tree fullPath pIndex pValue =
@@ -136,11 +133,7 @@ component' modes config mbChildComp =
       buttonLabel = maybe (show pValue) (\val -> toLabel curPath val <> " [" <> show pValue <> "]") mbValueAt
     in
     if not isLast
-      then HH.button
-          [ HP.style "cursor: pointer; pointer-events: all;"
-          , HE.onClick $ const $ FocusOn curPath
-          ]
-          [ HH.text buttonLabel ]
+      then qbutton buttonLabel $ FocusOn curPath
       else HH.text buttonLabel
 
   previewAt tree previewPath =
@@ -149,6 +142,13 @@ component' modes config mbChildComp =
         SvgTree.renderPreview' modes.previewMode config mbChildComp previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
+
+  qbutton label action =
+    HH.button
+      [ HP.style "cursor: pointer; pointer-events: all;"
+      , HE.onClick $ const action
+      ]
+      [ HH.text label ]
 
   render :: State a -> _
   render state =
@@ -179,11 +179,7 @@ component' modes config mbChildComp =
       {- Zoom & Size -}
       , HH.div
         [ HP.style "position: absolute; right: 0; top: 0;" ]
-        [ HH.button
-          [ HP.style "cursor: pointer; pointer-events: all;"
-          , HE.onClick $ const ResetZoom
-          ]
-          [ HH.text "Reset Zoom" ]
+        [ qbutton "ResetZoom" ResetZoom
         , HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom)
         , HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height
         ]
@@ -191,14 +187,18 @@ component' modes config mbChildComp =
       {- Path Breadcrumbs -}
       , HH.div
           [ HP.style "position: absolute; right: 0; top: 20px;" ]
-          $ pure
-          $ case Path.toArray state.focus of
+          [ case state.prevFocus of
+            Just prevFocus ->
+              qbutton "Back" $ FocusOn prevFocus
+            Nothing -> HH.text ""
+          , case Path.toArray state.focus of
               [] -> HH.text "*"
               path ->
                 HH.div
                   []
                   $ rootButton config.valueLabel state.tree
                   : mapWithIndex (pathButton config.valueLabel state.tree path) path
+          ]
 
       {- Current Preview(s) -}
       , HH.div
@@ -232,27 +232,18 @@ component' modes config mbChildComp =
     HH.div
       []
       [ if not $ Set.member nodePath pinned then
-          HH.button
-            [ HP.style "cursor: pointer; pointer-events: all;"
-            , HE.onClick $ const $ Pin nodePath
-            ]
-            [ HH.text "Pin" ]
+          qbutton "Pin" $ Pin nodePath
         else
-          HH.button
-            [ HP.style "cursor: pointer; pointer-events: all;"
-            , HE.onClick $ const $ UnPin nodePath
-            ]
-            [ HH.text "Unpin" ]
+          qbutton "Unpin" $ UnPin nodePath
       , HH.text $ show nodePath
       , if allowGo then
-          HH.button
-              [ HP.style "cursor: pointer; pointer-events: all;"
-              , HE.onClick $ const $ FocusOn nodePath
-              ]
-              [ HH.text "Go" ]
-          else HH.text ""
+          qbutton "Go" $ FocusOn nodePath
+        else HH.text ""
       , previewAt tree nodePath
       ]
+
+  updateFocus newPath s =
+    s { focus = newPath, prevFocus = if s.focus /= newPath then Just s.focus else s.prevFocus }
 
   handleAction = case _ of
     Receive input ->
@@ -269,9 +260,9 @@ component' modes config mbChildComp =
     ResetZoom ->
       H.modify_ _ { zoom = 1.0 }
     FocusOn path ->
-      H.modify_ _ { focus = path }
+      H.modify_ $ updateFocus path
     NodeClick path _ ->
-      H.modify_ _ { focus = path }
+      H.modify_ $ updateFocus path
     NodeOver path _ ->
       H.modify_ _ { preview = Focused path }
     NodeOut path _ ->
