@@ -20,7 +20,7 @@ import Data.Bifunctor (lmap)
 
 import Yoga.Tree (Tree)
 import Yoga.Tree.Extended as Tree
-import Yoga.Tree.Extended.Path (Path)
+import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path as Path
 
 
@@ -34,14 +34,29 @@ import Halogen.Svg.Elements as HS
 
 
 toGraph :: forall a. Tree a -> Graph Path a
-toGraph = Path.fill >>> Tree.break breakRoot >>> Graph.fromMap
+toGraph = toGraph' Path.root
+
+
+toGraph' :: forall a. Path -> Tree a -> Graph Path a
+toGraph' (Path root) = Path.fill >>> Tree.break breakRoot >>> Graph.fromMap
     where
         breakNode theMap (path /\ a) xs =
             theMap
-                # Map.insert path (a /\ (Array.toUnfoldable $ Tuple.fst <$> Tree.value <$> xs))
+                # Map.insert
+                    (alignWithRoot path)
+                    (a /\
+                        (Array.toUnfoldable
+                             $  alignWithRoot
+                            <$> Tuple.fst
+                            <$> Tree.value
+                            <$> xs
+                        )
+                    )
                 # foldl' (Tree.break <<< breakNode) xs
         breakRoot =
             breakNode Map.empty
+        alignWithRoot (Path path) =
+            Path $ root <> path
 
 
 findPosition :: Number -> Position -> Number -> Number -> Int -> Int -> Position

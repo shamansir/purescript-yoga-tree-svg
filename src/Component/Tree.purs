@@ -145,8 +145,8 @@ component config childComp =
           $ HS.g
             [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
             $ SvgAlt.renderGraph (geometry { scaleFactor = state.zoom * 5.0 }) config events
-            $ SvgAlt.toGraph
-            -- $ state.tree
+            -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
+            $ SvgAlt.toGraph' state.focus
             $ fromMaybe state.tree
             $ Path.find state.focus state.tree
       , HH.div
