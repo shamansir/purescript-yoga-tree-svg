@@ -58,23 +58,44 @@ findPosition parent startAngle endAngle count index =
     { x, y }
 
 
+rotateBy :: Position -> Position -> Number -> Number -> Position
+rotateBy parent current scaleFactor theta =
+    let
+        dx = current.x - parent.x
+        dy = current.y - parent.y
+        co = Number.cos theta
+        si = Number.sin theta
+        xx = parent.x + scaleFactor * (co * dx - si * dy)
+        yy = parent.y + scaleFactor * (si * dx + co * dy)
+    in
+    { x : xx, y : yy }
+
+
+
 
 foldl' :: forall f a b. Foldable f => (b -> a -> b) -> f a -> b -> b
 foldl' = flip <<< foldl
 
 
 type Position = { x :: Number, y :: Number }
-type Positioned a = { x :: Number, y :: Number, value :: a }
+type Size = { width :: Number, height :: Number }
+type Positioned a = { x :: Number, y :: Number, width :: Number, height :: Number, value :: a }
 type PositionedMap a = Map Path (Positioned a)
 type PositionedGraphMap a = Map Path (Positioned a /\ List Path)
 
 
-positions :: forall a. Graph Path a -> Graph Path (Positioned a)
-positions graph =
+transform :: forall a. Number -> Number -> Number -> Number -> Positioned a -> Positioned a
+transform dx dy sx sy node =
+    node { x = sx * node.x + dx, y = sy * node.y + dy, width = sx * node.width, height = sy * node.height }
+
+
+distributePositions :: forall a. (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned a)
+distributePositions getSize graph =
     graphMap
         # mapWithIndex ((/\))
         # foldl (flip distribute) Map.empty
         # fillBackChildren
+        -- TODO: rotate children using grand-parent -> parent vector
         # Graph.fromMap
 
     where
@@ -82,8 +103,8 @@ positions graph =
         zeroPos = { x : 0.0, y : 0.0 }
         childPos parentPos =
             findPosition parentPos 0.0 (2.0 * Number.pi / 3.0)
-        mergeWithValue value pos =
-            { x : pos.x, y : pos.y, value }
+        injectRect value pos size =
+            { x : pos.x, y : pos.y, width : size.width, height : size.height, value }
 
         fillBackChildren :: PositionedMap a -> PositionedGraphMap a
         fillBackChildren = mapWithIndex \path cell -> cell /\ (Map.lookup path graphMap <#> Tuple.snd # fromMaybe Nil)
@@ -96,12 +117,12 @@ positions graph =
                         # positionChildrenFrom { x, y } childPaths
                 Nothing ->
                     prevPositions
-                        # storePosition curPath curValue zeroPos
+                        # storeRect curPath curValue zeroPos (getSize curPath curValue)
                         # positionChildrenFrom zeroPos childPaths
 
-        storePosition :: Path -> a -> Position -> PositionedMap a -> PositionedMap a
-        storePosition path value position =
-            Map.insert path $ mergeWithValue value position
+        storeRect :: Path -> a -> Position -> Size -> PositionedMap a -> PositionedMap a
+        storeRect path value position size =
+            Map.insert path $ injectRect value position size
 
         positionChildrenFrom :: Position -> List Path -> PositionedMap a -> PositionedMap a
         positionChildrenFrom parentPos childPaths =
@@ -110,47 +131,59 @@ positions graph =
         insertChildPos :: Position -> Int -> Int /\ Path -> PositionedMap a -> PositionedMap a
         insertChildPos parentPos childrenCount (index /\ childPath) prevPositions =
             case graphMap # Map.lookup childPath <#> Tuple.fst of
-                Just value ->
+                Just childValue ->
                     prevPositions
-                        # storePosition childPath value (childPos parentPos childrenCount index)
+                        # storeRect childPath childValue (childPos parentPos childrenCount index) (getSize childPath childValue)
                 Nothing ->
                     prevPositions
 
 
+type Config a =
+    { valueLabel :: Path -> a -> String
+    , valueColor :: Path -> a -> HSA.Color
+    , edgeColor :: Path -> a -> Path -> a -> HSA.Color
+    , valueSize :: Path -> a -> { width :: Number, height :: Number }
+    }
 
-renderGraph :: forall a p i. Show a => Graph Path a -> Array (HTML p i)
-renderGraph graph = foldl (<>) [] $ renderNode <$> positionsMap
+
+type Geometry =
+    { scaleFactor :: Number
+    }
+
+
+renderGraph :: forall a p i. Geometry -> Config a -> Graph Path a -> Array (HTML p i)
+renderGraph geom config graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
         positionsMap :: PositionedGraphMap a
-        positionsMap = Graph.toMap $ positions graph
-        renderValue label { x, y, value } =
+        positionsMap = Graph.toMap $ distributePositions config.valueSize graph
+        renderValue nodePath label { x, y, value } =
             HS.g
                 [ HSA.transform $ pure $ HSA.Translate x y ]
                 [ HS.circle
                     [ HSA.cx 0.0
                     , HSA.cy 0.0
                     , HSA.r 5.0
-                    , HSA.fill $ HSA.RGB 200 200 200
+                    , HSA.fill $ config.valueColor nodePath value
                     , HSA.stroke $ HSA.RGB 0 0 0
                     ]
                 , HS.text
-                    [ HSA.fill $ HSA.RGB 0 0 0
+                    [ HSA.fill $ config.valueColor nodePath value
                     , HSA.x 6.0
                     , HSA.y 9.0
                     ]
-                    [ HH.text $ label <> show value ]
+                    [ HH.text $ label <> config.valueLabel nodePath value ]
                 ]
-        renderChild parent path =
-            case Map.lookup path positionsMap <#> Tuple.fst of
+        renderChild parentPath parent childPath =
+            case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
                     HS.line
                         [ HSA.x1 parent.x
                         , HSA.y1 parent.y
                         , HSA.x2 child.x
                         , HSA.y2 child.y
-                        , HSA.stroke $ HSA.RGB 0 0 0
+                        , HSA.stroke $ config.edgeColor parentPath parent.value childPath child.value
                         ]
                 Nothing -> HS.g [] []
-        renderNode (a /\ paths) =
-                [ renderValue "node" a
-                ] <> (renderChild a <$> Array.fromFoldable paths)
+        renderNode nodePath (a /\ paths) =
+                [ renderValue nodePath "node" a
+                ] <> (renderChild nodePath a <$> Array.fromFoldable paths)

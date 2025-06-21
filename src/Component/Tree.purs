@@ -66,14 +66,19 @@ type State a =
     }
 
 
-component :: forall a query output m. Show a => Ord a => (forall cq co. H.Component cq (Path /\ a) co m) -> H.Component query (Input a) output m
-component childComp =
+component :: forall a query output m. Ord a => SvgAlt.Config a -> (forall cq co. H.Component cq (Path /\ a) co m) -> H.Component query (Input a) output m
+component config childComp =
   H.mkComponent
     { initialState
     , render
     , eval: H.mkEval $ H.defaultEval { handleAction = handleAction }
     }
   where
+  geometry :: SvgAlt.Geometry
+  geometry =
+    { scaleFactor : 1.0
+    }
+
   initialState :: Input a -> State a
   initialState { tree } =
     { tree, focus : Path.root, zoom : 1.0 }
@@ -87,7 +92,8 @@ component childComp =
       $ pure
       $ HS.g
         [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
-      $ SvgAlt.renderGraph $ Debug.spy "graph" $ SvgAlt.toGraph state.tree
+      $ SvgAlt.renderGraph geometry config
+      $ SvgAlt.toGraph state.tree
 
   {-
   render :: State a -> _

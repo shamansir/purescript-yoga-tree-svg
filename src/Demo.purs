@@ -24,6 +24,7 @@ import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended as Tree
 import Yoga.Tree.Extended.Path (Path)
 import Yoga.Tree.Svg.Component.Tree as YogaSvgTree
+import Yoga.Tree.Svg.Component.Tree.SvgAlt as YogaSvgTree
 
 main :: Effect Unit
 main = HA.runHalogenAff do
@@ -117,6 +118,15 @@ simpleTree =
     ]
 
 
+config :: YogaSvgTree.Config Item
+config =
+  { edgeColor : \_ _ _ _ -> HSA.RGB 0 0 0
+  , valueLabel : const show
+  , valueColor : const $ const $ HSA.RGB 200 200 200
+  , valueSize : const $ const { width : 20.0, height : 20.0 }
+  }
+
+
 component ∷ ∀ query input output m. H.Component query input output m
 component =
   H.mkComponent
@@ -130,7 +140,7 @@ component =
 
   render :: forall action. State Item -> H.ComponentHTML action Slots m
   render state =
-    HH.slot_ _tree unit (YogaSvgTree.component child) { tree : state.tree }
+    HH.slot_ _tree unit (YogaSvgTree.component config child) { tree : state.tree }
 
   child :: forall q o. H.Component q (Path /\ Item) o m
   child = H.mkComponent
