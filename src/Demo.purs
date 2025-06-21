@@ -29,7 +29,7 @@ import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended as Tree
 import Yoga.Tree.Extended.Path (Path)
 import Yoga.Tree.Svg.Component.Tree as YogaSvgTree
-import Yoga.Tree.Svg.Component.Tree.SvgAlt as YogaSvgTree
+import Yoga.Tree.Svg.Component.Tree.Svg as YogaSvgTree
 
 import Web.Event.Event as E
 import Web.HTML (Window, window) as Web

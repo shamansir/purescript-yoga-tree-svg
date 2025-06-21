@@ -120,7 +120,7 @@ component config childComp =
   rootButton toLabel tree =
     let
       mbValueAt = tree # Path.find Path.root <#> Tree.value
-      buttonLabel = maybe "*" (\val -> "* (" <> toLabel Path.root val <> ")") mbValueAt
+      buttonLabel = maybe "*" (\val -> toLabel Path.root val <> " [*]") mbValueAt
     in  HH.button
           [ HP.style "cursor: pointer; pointer-events: all;"
           , HE.onClick $ const $ FocusOn $ Path.root
@@ -134,7 +134,7 @@ component config childComp =
       isLast = pIndex == (pathLen - 1)
       curPath = Path.Path $ Array.dropEnd (max 0 $ pathLen - pIndex - 1) fullPath
       mbValueAt = tree # Path.find curPath <#> Tree.value
-      buttonLabel = maybe (show pValue) (\val -> show pValue <> " (" <> toLabel curPath val <> ")") mbValueAt
+      buttonLabel = maybe (show pValue) (\val -> toLabel curPath val <> " [" <> show pValue <> "]") mbValueAt
     in
     if not isLast
       then HH.button
@@ -209,64 +209,6 @@ component config childComp =
               None ->
                 HH.text ""
       ]
-
-  {-
-  render :: State a -> _
-  render state =
-    let
-      aperture = 0.225
-      renderPref =
-        Render.defaults
-          { ballRadius  = 10.0
-          , halfAngle   = aperture * pi
-          , scaleFactor = state.zoom
-          }
-      graph =
-        Render.toGraph
-          renderPref
-          $ Path.fill
-          $ state.tree
-      config =
-        { edgeColor  : const $ HSA.RGB 200 200 200
-        , valueColor : const $ HSA.RGB   0 100   0
-        , valueLabel : show
-        }
-    in
-      HS.svg
-        [ HSA.width  1000.0
-        , HSA.height 1000.0
-        , HE.onWheel \wevt -> WheelChange
-            { dx : Wheel.deltaX wevt
-            , dy : Wheel.deltaY wevt
-            }
-        ]
-        $ Svg.render config Svg.FullLabel
-        -- $ Svg.renderWithComponent childComp config
-        $ Svg.transform 425.0 100.0 60.0 60.0 0.5
-        $ graph
-  -}
-
-  {-
-  render state =
-    case Path.find state.focus $ Path.fill state.tree of
-        Just tree ->
-            renderNode tree
-        Nothing -> HH.text "*"
-
-  renderNode node =
-    HH.div
-        [ HP.style "padding-left: 10px;" ]
-        $ (HH.slot_
-            _item
-            (Tuple.fst $ Tree.value node)
-            childComp
-            $ Tree.value node
-          )
-        : (foldl Array.snoc []
-             $ renderNode
-            <$> Tree.children node
-          )
-    -}
 
   handleAction = case _ of
     Receive input ->
