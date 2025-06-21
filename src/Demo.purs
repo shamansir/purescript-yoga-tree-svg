@@ -28,8 +28,8 @@ import Yoga.Tree (Tree)
 import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended as Tree
 import Yoga.Tree.Extended.Path (Path)
-import Yoga.Tree.Svg.Component.Tree as YogaSvgTree
-import Yoga.Tree.Svg.Component.Tree.Svg as YogaSvgTree
+import Yoga.Tree.Svg as YogaSvgTree
+import Yoga.Tree.Svg.Render (Config) as YogaSvgTree
 
 import Web.Event.Event as E
 import Web.HTML (Window, window) as Web
@@ -165,12 +165,12 @@ component =
   render :: forall action. State Item -> H.ComponentHTML action Slots m
   render state =
     HH.slot_ _tree unit
-      (YogaSvgTree.component config child)
+      (YogaSvgTree.component_ config child)
       { tree : state.tree
       , size : reduceSize $ fromMaybe defaultSize state.window
       }
 
-  child :: forall q o. H.Component q (Path /\ Item) o m
+  child :: forall q o. YogaSvgTree.NodeComponent q o m Item
   child = H.mkComponent
     { initialState : identity
     , render : show >>> HH.text >>> pure >>> HS.text [ HSA.fill $ HSA.RGB 0 0 0 ]

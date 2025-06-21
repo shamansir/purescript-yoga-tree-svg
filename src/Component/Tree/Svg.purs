@@ -1,10 +1,12 @@
-module Yoga.Tree.Svg.Component.Tree.Svg where
+module Yoga.Tree.Svg.Render where
 
 import Prelude
 
+import Type.Proxy (Proxy(..))
+
 import Data.Number (pi, cos, sin) as Number
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Graph (Graph)
+import Data.Graph (Graph, Edge)
 import Data.Graph (toMap, fromMap) as Graph
 import Data.Map (Map)
 import Data.Map (empty, lookup, insert) as Map
@@ -31,6 +33,25 @@ import Halogen.HTML.Properties as HHP
 import Halogen.HTML.Events as HE
 import Halogen.Svg.Attributes as HSA
 import Halogen.Svg.Elements as HS
+
+
+type Slots =
+  ( item :: forall q o. H.Slot q o Path
+  )
+
+
+_item  = Proxy :: _ "item"
+
+
+data NodeMode
+    = JustNode
+    | NodeWithLabel
+    | Component
+
+
+data EdgeMode
+    = JustEdge
+    | EdgeWithLabel
 
 
 toGraph :: forall a. Tree a -> Graph Path a
@@ -179,11 +200,32 @@ type Geometry =
     { scaleFactor :: Number
     , baseRadius :: Number
     , scaleLimit :: { min :: Number, max :: Number }
+    , nodeMode :: NodeMode
+    , edgeMode :: EdgeMode
+    , previewMode :: NodeMode
+    }
+
+
+type NodeComponent query output m a
+    = H.Component query (NodeComponentInput a) output m
+
+
+type NodeComponentInput a =
+    { path :: Path
+    , value :: a
     }
 
 
 renderGraph :: forall a p i. Geometry -> Config a -> Events i a -> Graph Path a -> Array (HTML p i)
-renderGraph geom config events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
+renderGraph geom config = renderGraph' geom config Nothing
+
+
+renderGraph_ :: forall a p i m. Geometry -> Config a -> (forall cq co. NodeComponent cq co m a) -> Events i a -> Graph Path a -> Array (HTML p i)
+renderGraph_ geom config childComp = renderGraph' geom config (Just childComp)
+
+
+renderGraph' :: forall a p i m. Geometry -> Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> Events i a -> Graph Path a -> Array (HTML p i)
+renderGraph' geom config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
         positionsMap :: PositionedGraphMap a
         positionsMap = Graph.toMap $ distributePositions geom config.valueSize graph
@@ -195,67 +237,132 @@ renderGraph geom config events graph = foldl (<>) [] $ mapWithIndex renderNode p
                 , HE.onMouseOver $ const $ events.valueOver  nodePath value
                 , HE.onMouseOut  $ const $ events.valueOut   nodePath value
                 ]
-                [ HS.circle
-                    [ HSA.cx 0.0
-                    , HSA.cy 0.0
-                    , HSA.r 5.0
-                    , HSA.fill $ config.valueColor nodePath value
-                    , HSA.stroke $ HSA.RGB 0 0 0
-                    ]
-                , HS.text
-                    [ HSA.fill $ config.valueColor nodePath value
-                    , HSA.x 6.0
-                    , HSA.y 9.0
-                    ]
-                    [ HH.text $ config.valueLabel nodePath value ]
-                ]
+                $ pure
+                $ _renderValue geom.nodeMode config mbComponent { x : 0.0, y : 0.0 } nodePath value
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
                     HS.g
                         [ HHP.style "cursor: cross; pointer-events: none;" ]
-                        [ HS.line
-                            [ HSA.x1 parent.x
-                            , HSA.y1 parent.y
-                            , HSA.x2 child.x
-                            , HSA.y2 child.y
-                            , HSA.stroke $ config.edgeColor parentPath parent.value childPath child.value
-                            ]
-                        , HS.text
-                            [ HSA.x $ parent.x + ((child.x - parent.x) / 2.0)
-                            , HSA.y $ parent.y + ((child.y - parent.y) / 2.0)
-                            ]
-                            [ HH.text $ config.edgeLabel parentPath parent.value childPath child.value ]
-                        ]
+                        $ pure
+                        $ _renderEdge geom.edgeMode config
+                        $
+                            { start : { path : parentPath, pos : { x : parent.x, y: parent.y }, value : parent.value }
+                            , end   : { path : childPath,  pos : { x : child.x,  y: child.y  }, value : child.value  }
+                            }
                 Nothing -> HS.g [] []
         renderNode nodePath (a /\ paths) =
             (renderEdge nodePath a <$> Array.fromFoldable paths)
             <> [ renderValue nodePath a ]
 
 
-renderPreview :: forall a p i. Config a -> Path -> a -> HTML p i
-renderPreview config nodePath value =
+renderPreview :: forall a p i. NodeMode -> Config a -> Path -> a -> HTML p i
+renderPreview nodeMode config = renderPreview' nodeMode config Nothing
+
+
+renderPreview_ :: forall a p i m. NodeMode -> Config a -> (forall cq co. NodeComponent cq co m a) -> Path -> a -> HTML p i
+renderPreview_ nodeMode config childComp = renderPreview' nodeMode config (Just childComp)
+
+
+renderPreview' :: forall a p i m. NodeMode -> Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> Path -> a -> HTML p i
+renderPreview' nodeMode config mbComponent nodePath value =
     let
         previewSize = config.valueSize nodePath value
+        position =
+            { x : previewSize.width / 2.0
+            , y :  previewSize.height / 2.0
+            }
     in
         HS.svg
             [ HSA.width  $ previewSize.width
             , HSA.height $ previewSize.height
             ]
-            $ pure $ HS.g
+            $ pure
+            $ HS.g
                 [ HHP.style "pointer-events: none;"
                 ]
-                [ HS.circle
-                    [ HSA.cx $ previewSize.width / 2.0
-                    , HSA.cy $ previewSize.height / 2.0
-                    , HSA.r 5.0
-                    , HSA.fill $ config.valueColor nodePath value
-                    , HSA.stroke $ HSA.RGB 0 0 0
-                    ]
-                , HS.text
-                    [ HSA.fill $ config.valueColor nodePath value
-                    , HSA.x $ (previewSize.width / 2.0) + 6.0
-                    , HSA.y $ (previewSize.height / 2.0) + 9.0
-                    ]
-                    [ HH.text $ config.valueLabel nodePath value ]
-                ]
+            $ pure
+            $ _renderValue nodeMode config mbComponent position nodePath value
+
+
+type EdgeJoint a =
+    { path :: Path
+    , value :: a
+    , pos :: Position
+    }
+
+
+type EdgeDef a = Edge (EdgeJoint a)
+
+
+_renderEdge :: forall a p i. EdgeMode -> Config a -> EdgeDef a -> HTML p i
+_renderEdge EdgeWithLabel config edge =
+    let
+        parent = edge.start
+        child = edge.end
+        parentPos = parent.pos
+        childPos= child.pos
+    in HS.g []
+        [ HS.line
+            [ HSA.x1 parentPos.x
+            , HSA.y1 parentPos.y
+            , HSA.x2 childPos.x
+            , HSA.y2 childPos.y
+            , HSA.stroke $ config.edgeColor parent.path parent.value child.path child.value
+            ]
+        , HS.text
+            [ HSA.x $ parentPos.x + ((childPos.x - parentPos.x) / 2.0)
+            , HSA.y $ parentPos.y + ((childPos.y - parentPos.y) / 2.0)
+            ]
+            [ HH.text $ config.edgeLabel parent.path parent.value child.path child.value ]
+        ]
+_renderEdge JustEdge config edge =
+    let
+        parent = edge.start
+        child = edge.end
+        parentPos = parent.pos
+        childPos= child.pos
+    in HS.g []
+        [ HS.line
+            [ HSA.x1 parentPos.x
+            , HSA.y1 parentPos.y
+            , HSA.x2 childPos.x
+            , HSA.y2 childPos.y
+            , HSA.stroke $ config.edgeColor parent.path parent.value child.path child.value
+            ]
+        ]
+
+
+_renderValue :: forall a p i m. NodeMode -> Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> Position -> Path -> a -> HTML p i
+_renderValue NodeWithLabel config _ pos nodePath value =
+    HS.g
+        []
+        [ HS.circle
+            [ HSA.cx pos.x
+            , HSA.cy pos.y
+            , HSA.r 5.0
+            , HSA.fill $ config.valueColor nodePath value
+            , HSA.stroke $ HSA.RGB 0 0 0
+            ]
+        , HS.text
+            [ HSA.fill $ config.valueColor nodePath value
+            , HSA.x $ pos.x + 6.0
+            , HSA.y $ pos.y + 9.0
+            ]
+            [ HH.text $ config.valueLabel nodePath value ]
+        ]
+_renderValue JustNode config _ pos nodePath value =
+    HS.g
+        []
+        [ HS.circle
+            [ HSA.cx pos.x
+            , HSA.cy pos.y
+            , HSA.r 5.0
+            , HSA.fill $ config.valueColor nodePath value
+            , HSA.stroke $ HSA.RGB 0 0 0
+            ]
+        ]
+_renderValue Component config Nothing pos nodePath value =
+    HS.text [] [ HH.text "NO COMPONENT" ]
+_renderValue Component config (Just childComp) pos nodePath value =
+    HS.text [] [ HH.text "NO COMPONENT" ]

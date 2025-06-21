@@ -1,4 +1,4 @@
-module Yoga.Tree.Svg.Component.Tree where
+module Yoga.Tree.Svg where
 
 import Prelude
 
@@ -35,19 +35,8 @@ import Yoga.Tree as Tree
 import Yoga.Tree.Extended as Tree
 import Yoga.Tree.Extended.Path (Path)
 import Yoga.Tree.Extended.Path (advance, up, find, root, traverse, fill, toArray, Path(..)) as Path
-import Yoga.Tree.Svg.Component.Tree.Graph as Render
-import Yoga.Tree.Svg.Component.Tree.Render as Render
-import Yoga.Tree.Svg.Component.Tree.Svg as Svg
-import Yoga.Tree.Svg.Component.Tree.SvgAlt as SvgAlt
+import Yoga.Tree.Svg.Render as SvgTree
 -- import Yoga.Tree.Zipper (Path)
-
-
-type Slots =
-  ( item :: forall q o. H.Slot q o Path
-  )
-
-
-_item  = Proxy :: _ "item"
 
 
 data Action a
@@ -83,8 +72,19 @@ type State a =
     }
 
 
-component :: forall a query output m. Ord a => SvgAlt.Config a -> (forall cq co. H.Component cq (Path /\ a) co m) -> H.Component query (Input a) output m
-component config childComp =
+type NodeComponent q o m a = SvgTree.NodeComponent q o m a
+
+
+component :: forall a query output m. Ord a => SvgTree.Config a -> H.Component query (Input a) output m
+component config = component' config Nothing
+
+
+component_ :: forall a query output m. Ord a => SvgTree.Config a -> (forall cq co. NodeComponent cq co m a) -> H.Component query (Input a) output m
+component_ config childComp = component' config (Just childComp)
+
+
+component' :: forall a query output m. Ord a => SvgTree.Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> H.Component query (Input a) output m
+component' config mbChildComp =
   H.mkComponent
     { initialState
     , render
@@ -94,11 +94,14 @@ component config childComp =
         }
     }
   where
-  geometry :: SvgAlt.Geometry
+  geometry :: SvgTree.Geometry
   geometry =
     { scaleFactor : 10.0
     , baseRadius : 10.0
     , scaleLimit : { min : 0.2, max : 50.0 }
+    , nodeMode : SvgTree.NodeWithLabel
+    , edgeMode : SvgTree.EdgeWithLabel
+    , previewMode : SvgTree.NodeWithLabel
     }
 
   initialState :: Input a -> State a
@@ -109,7 +112,7 @@ component config childComp =
   receive { tree, size } =
     _ { size = size, tree = tree }
 
-  events :: SvgAlt.Events (Action a) a
+  events :: SvgTree.Events (Action a) a
   events =
     { valueClick : NodeClick
     , valueOver  : NodeOver
@@ -147,7 +150,7 @@ component config childComp =
   previewAt tree previewPath =
     case Path.find previewPath tree of
       Just previewNode ->
-        SvgAlt.renderPreview config previewPath $ Tree.value previewNode
+        SvgTree.renderPreview geometry.previewMode config previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
 
@@ -169,9 +172,9 @@ component config childComp =
           $ pure
           $ HS.g
             [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
-            $ SvgAlt.renderGraph (geometry { scaleFactor = state.zoom * 5.0 }) config events
+            $ SvgTree.renderGraph' (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
             -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
-            $ SvgAlt.toGraph' state.focus
+            $ SvgTree.toGraph' state.focus
             $ fromMaybe state.tree
             $ Path.find state.focus state.tree
       , HH.div
