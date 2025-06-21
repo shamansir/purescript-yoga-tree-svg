@@ -16,6 +16,7 @@ import Data.List (length, reverse) as List
 import Data.Foldable (class Foldable, foldl)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Tuple.Nested ((/\), type (/\))
+import Data.Bifunctor (lmap)
 
 import Yoga.Tree (Tree)
 import Yoga.Tree.Extended as Tree
@@ -43,17 +44,16 @@ toGraph = Path.fill >>> Tree.break breakRoot >>> Graph.fromMap
             breakNode Map.empty
 
 
-findPosition :: Position -> Number -> Number -> Int -> Int -> Position
-findPosition parent startAngle endAngle count index =
+findPosition :: Number -> Position -> Number -> Number -> Int -> Int -> Position
+findPosition baseRadius parent startAngle endAngle count index =
     let
-        radius = 100.0
         currentAngle = startAngle + ((endAngle - startAngle) / Int.toNumber count) * Int.toNumber index
 
         co = Number.cos currentAngle
         si = Number.sin currentAngle
 
-        x = parent.x + (co * radius - si * radius)
-        y = parent.y + (si * radius + co * radius)
+        x = parent.x + (co * baseRadius - si * baseRadius)
+        y = parent.y + (si * baseRadius + co * baseRadius)
     in
     { x, y }
 
@@ -89,12 +89,18 @@ transform dx dy sx sy node =
     node { x = sx * node.x + dx, y = sy * node.y + dy, width = sx * node.width, height = sy * node.height }
 
 
-distributePositions :: forall a. (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned a)
-distributePositions getSize graph =
+scale :: forall a. Number -> Positioned a -> Positioned a
+scale factor =
+    transform 0.0 0.0 factor factor
+
+
+distributePositions :: forall a. Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned a)
+distributePositions geom getSize graph =
     graphMap
         # mapWithIndex ((/\))
         # foldl (flip distribute) Map.empty
         # fillBackChildren
+        # map (lmap $ scale $ min geom.scaleLimit.max $ max geom.scaleLimit.min geom.scaleFactor)
         -- TODO: rotate children using grand-parent -> parent vector
         # Graph.fromMap
 
@@ -102,7 +108,7 @@ distributePositions getSize graph =
         graphMap = Graph.toMap graph
         zeroPos = { x : 0.0, y : 0.0 }
         childPos parentPos =
-            findPosition parentPos 0.0 (2.0 * Number.pi / 3.0)
+            findPosition geom.baseRadius parentPos 0.0 (2.0 * Number.pi / 3.0)
         injectRect value pos size =
             { x : pos.x, y : pos.y, width : size.width, height : size.height, value }
 
@@ -148,6 +154,8 @@ type Config a =
 
 type Geometry =
     { scaleFactor :: Number
+    , baseRadius :: Number
+    , scaleLimit :: { min :: Number, max :: Number }
     }
 
 
@@ -155,7 +163,7 @@ renderGraph :: forall a p i. Geometry -> Config a -> Graph Path a -> Array (HTML
 renderGraph geom config graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
         positionsMap :: PositionedGraphMap a
-        positionsMap = Graph.toMap $ distributePositions config.valueSize graph
+        positionsMap = Graph.toMap $ distributePositions geom config.valueSize graph
         renderValue nodePath label { x, y, value } =
             HS.g
                 [ HSA.transform $ pure $ HSA.Translate x y ]

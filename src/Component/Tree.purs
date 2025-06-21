@@ -76,7 +76,9 @@ component config childComp =
   where
   geometry :: SvgAlt.Geometry
   geometry =
-    { scaleFactor : 1.0
+    { scaleFactor : 10.0
+    , baseRadius : 10.0
+    , scaleLimit : { min : 0.2, max : 50.0 }
     }
 
   initialState :: Input a -> State a
@@ -85,15 +87,22 @@ component config childComp =
 
   render :: State a -> _
   render state =
-    HS.svg
-      [ HSA.width 1000.0
-      , HSA.height 1000.0
+    HH.div
+      []
+      [ HS.svg
+        [ HSA.width 1000.0
+        , HSA.height 1000.0
+        , HE.onWheel \wevt -> WheelChange
+            { dx : Wheel.deltaX wevt
+            , dy : Wheel.deltaY wevt
+            }
+        ]
+        $ pure
+        $ HS.g
+          [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
+          $ SvgAlt.renderGraph (geometry { scaleFactor = state.zoom * 5.0 }) config
+          $ SvgAlt.toGraph state.tree
       ]
-      $ pure
-      $ HS.g
-        [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
-      $ SvgAlt.renderGraph geometry config
-      $ SvgAlt.toGraph state.tree
 
   {-
   render :: State a -> _
@@ -155,7 +164,14 @@ component config childComp =
 
   handleAction = case _ of
     WheelChange { dy } ->
-      H.modify_ (\state -> state { zoom = min 3.0 $ max 0.3 $ state.zoom + (dy * 0.1) })
+      H.modify_ (\state ->
+        state
+          { zoom
+            = min geometry.scaleLimit.max
+            $ max geometry.scaleLimit.min
+            $ state.zoom + (dy * 0.1)
+          }
+      )
     Advance n ->
       pure unit
     GoUp ->
