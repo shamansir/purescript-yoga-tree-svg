@@ -2,6 +2,7 @@ package:
   name: yoga-tree-svg
   dependencies:
     - console
+    - const
     - debug
     - effect
     - graphs

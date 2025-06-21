@@ -6,6 +6,7 @@
         "core": {
           "dependencies": [
             "console",
+            "const",
             "debug",
             "effect",
             "graphs",

@@ -65,18 +65,18 @@ type State a =
     }
 
 
-type NodeComponent q o m a = SvgTree.NodeComponent q o m a
+type NodeComponent m a = SvgTree.NodeComponent m a
 
 
 component :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> H.Component query (Input a) output m
 component modes config = component' modes config Nothing
 
 
-component_ :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> (forall cq co. NodeComponent cq co m a) -> H.Component query (Input a) output m
+component_ :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> NodeComponent m a -> H.Component query (Input a) output m
 component_ modes config childComp = component' modes config (Just childComp)
 
 
-component' :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> H.Component query (Input a) output m
+component' :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
 component' modes config mbChildComp =
   H.mkComponent
     { initialState
@@ -141,7 +141,7 @@ component' modes config mbChildComp =
   previewAt tree previewPath =
     case Path.find previewPath tree of
       Just previewNode ->
-        SvgTree.renderPreview modes.previewMode config previewPath $ Tree.value previewNode
+        SvgTree.renderPreview' modes.previewMode config mbChildComp previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
 
@@ -149,6 +149,8 @@ component' modes config mbChildComp =
   render state =
     HH.div
       [ HP.style "oveflow: hidden;" ]
+
+      {- Graph component -}
       [ HH.div
         [ HP.style "position: absolute; left: 0; top: 0;" ]
         $ pure
@@ -168,6 +170,8 @@ component' modes config mbChildComp =
             $ Tree.toGraph' state.focus
             $ fromMaybe state.tree
             $ Path.find state.focus state.tree
+
+      {- Zoom & Size -}
       , HH.div
         [ HP.style "position: absolute; right: 0; top: 0;" ]
         [ HH.button
@@ -178,6 +182,8 @@ component' modes config mbChildComp =
         , HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom)
         , HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height
         ]
+
+      {- Path Breadcrumbs -}
       , HH.div
           [ HP.style "position: absolute; right: 0; top: 20px;" ]
           $ pure
@@ -188,10 +194,12 @@ component' modes config mbChildComp =
                   []
                   $ rootButton config.valueLabel state.tree
                   : mapWithIndex (pathButton config.valueLabel state.tree path) path
+
+      {- Current Preview(s) -}
       , HH.div
           [ HP.style $ "position: absolute; right: 0; top: 100px; " <> case state.preview of
             Focused _ -> "opacity: 1.0;"
-            LostFocus _ -> "opacity: 0.7;"
+            LostFocus _ -> "opacity: 0.6;"
             None -> ""
           ]
           $ pure

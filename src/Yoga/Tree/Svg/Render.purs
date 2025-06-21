@@ -1,8 +1,9 @@
 module Yoga.Tree.Svg.Render
-    ( Slots, _item
+    ( Slots, NodeSlot, _item, _preview
+    , NodeQuery, NodeOutput
     , NodeMode(..), EdgeMode(..)
     , Modes, Config, Events, Geometry
-    , NodeComponent, NodeComponentInput
+    , NodeComponent, NodeComponentInput, GraphHtml
     , renderGraph, renderGraph_, renderGraph'
     , renderPreview, renderPreview_, renderPreview'
     )
@@ -12,6 +13,9 @@ import Prelude
 
 import Type.Proxy (Proxy(..))
 
+import Prim.Row (class Cons) as Row
+
+import Data.Symbol (class IsSymbol)
 import Data.Number (pi) as Number
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Graph (Graph, Edge)
@@ -30,7 +34,6 @@ import Yoga.Tree.Extended.Path (Path)
 
 import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale)
 
-
 import Halogen as H
 import Halogen.HTML (HTML)
 import Halogen.HTML as HH
@@ -40,12 +43,21 @@ import Halogen.Svg.Attributes as HSA
 import Halogen.Svg.Elements as HS
 
 
+type NodeSlot = H.Slot NodeQuery NodeOutput Path
+
+
 type Slots =
-  ( item :: forall q o. H.Slot q o Path
+  ( item    :: NodeSlot
+  , preview :: NodeSlot
   )
 
 
 _item  = Proxy :: _ "item"
+_preview  = Proxy :: _ "preview"
+
+
+data NodeQuery x = NodeQuery
+type NodeOutput = Void
 
 
 data NodeMode
@@ -144,8 +156,8 @@ type Geometry =
     }
 
 
-type NodeComponent query output m a
-    = H.Component query (NodeComponentInput a) output m
+type NodeComponent m a
+    = H.Component NodeQuery (NodeComponentInput a) NodeOutput m
 
 
 type NodeComponentInput a =
@@ -154,15 +166,18 @@ type NodeComponentInput a =
     }
 
 
-renderGraph :: forall a p i. Modes -> Geometry -> Config a -> Events i a -> Graph Path a -> Array (HTML p i)
+type GraphHtml m i  = HTML (H.ComponentSlot Slots m i) i
+
+
+renderGraph :: forall a i m. Modes -> Geometry -> Config a -> Events i a -> Graph Path a -> Array (GraphHtml m i)
 renderGraph modes geom config = renderGraph' modes geom config Nothing
 
 
-renderGraph_ :: forall a p i m. Modes -> Geometry -> Config a -> (forall cq co. NodeComponent cq co m a) -> Events i a -> Graph Path a -> Array (HTML p i)
+renderGraph_ :: forall a i m. Modes -> Geometry -> Config a -> NodeComponent m a -> Events i a -> Graph Path a -> Array (GraphHtml m i)
 renderGraph_ modes geom config childComp = renderGraph' modes geom config (Just childComp)
 
 
-renderGraph' :: forall a p i m. Modes -> Geometry -> Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> Events i a -> Graph Path a -> Array (HTML p i)
+renderGraph' :: forall a i m. Modes -> Geometry -> Config a -> Maybe (NodeComponent m a) -> Events i a -> Graph Path a -> Array (GraphHtml m i)
 renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
         positionsMap :: PositionedGraphMap a
@@ -176,7 +191,7 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
                 , HE.onMouseOut  $ const $ events.valueOut   nodePath value
                 ]
                 $ pure
-                $ _renderValue modes.nodeMode config mbComponent { x : 0.0, y : 0.0 } nodePath value
+                $ _renderValue modes.nodeMode config _item mbComponent { x : 0.0, y : 0.0 } nodePath value
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
@@ -194,15 +209,15 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
             <> [ renderValue nodePath a ]
 
 
-renderPreview :: forall a p i. NodeMode -> Config a -> Path -> a -> HTML p i
+renderPreview :: forall a i m. NodeMode -> Config a -> Path -> a -> GraphHtml m i
 renderPreview nodeMode config = renderPreview' nodeMode config Nothing
 
 
-renderPreview_ :: forall a p i m. NodeMode -> Config a -> (forall cq co. NodeComponent cq co m a) -> Path -> a -> HTML p i
+renderPreview_ :: forall a i m. NodeMode -> Config a -> NodeComponent m a -> Path -> a -> GraphHtml m i
 renderPreview_ nodeMode config childComp = renderPreview' nodeMode config (Just childComp)
 
 
-renderPreview' :: forall a p i m. NodeMode -> Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> Path -> a -> HTML p i
+renderPreview' :: forall a i m. NodeMode -> Config a -> Maybe (NodeComponent m a) -> Path -> a -> GraphHtml m i
 renderPreview' nodeMode config mbComponent nodePath value =
     let
         previewSize = config.valueSize nodePath value
@@ -225,7 +240,7 @@ renderPreview' nodeMode config mbComponent nodePath value =
                 [ HHP.style "pointer-events: none;"
                 ]
                 $ pure
-                $ _renderValue nodeMode config mbComponent position nodePath value
+                $ _renderValue nodeMode config _item mbComponent position nodePath value
             ]
 
 
@@ -276,9 +291,19 @@ _renderEdge JustEdge config edge =
             ]
         ]
 
-
-_renderValue :: forall a p i m. NodeMode -> Config a -> (forall cq co. Maybe (NodeComponent cq co m a)) -> Position -> Path -> a -> HTML p i
-_renderValue NodeWithLabel config _ pos nodePath value =
+_renderValue
+    :: forall slot r' i m a
+     . IsSymbol slot
+    => Row.Cons slot NodeSlot r' Slots
+    => NodeMode
+    -> Config a
+    -> Proxy slot
+    -> Maybe (NodeComponent m a)
+    -> Position
+    -> Path
+    -> a
+    -> GraphHtml m i
+_renderValue NodeWithLabel config _ _ pos nodePath value =
     HS.g
         []
         [ HS.circle
@@ -295,7 +320,7 @@ _renderValue NodeWithLabel config _ pos nodePath value =
             ]
             [ HH.text $ config.valueLabel nodePath value ]
         ]
-_renderValue JustNode config _ pos nodePath value =
+_renderValue JustNode config _ _ pos nodePath value =
     HS.g
         []
         [ HS.circle
@@ -306,7 +331,20 @@ _renderValue JustNode config _ pos nodePath value =
             , HSA.stroke $ HSA.RGB 0 0 0
             ]
         ]
-_renderValue Component config Nothing pos nodePath value =
-    HS.text [] [ HH.text "NO COMPONENT" ]
-_renderValue Component config (Just childComp) pos nodePath value =
-    HS.text [] [ HH.text "NO COMPONENT" ]
+_renderValue Component _ _ Nothing pos _ _ =
+    HS.text
+        [ HSA.x pos.x, HSA.y pos.y
+        , HSA.fill $ HSA.RGB 0 0 0
+        ]
+        [ HH.text "NO COMPONENT" ]
+_renderValue Component _ pslot (Just childComp) pos nodePath value =
+    HS.g
+        [ HSA.transform $ pure $ HSA.Translate pos.x pos.y ]
+        $ pure
+        $ HH.slot_
+            pslot
+            nodePath
+            childComp
+            { path : nodePath
+            , value
+            }

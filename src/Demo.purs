@@ -140,14 +140,14 @@ config =
   , edgeLabel : \_ _ _ _ -> "E"
   , valueLabel : const show
   , valueColor : const $ const $ HSA.RGB 200 200 200
-  , valueSize : const $ const { width : 80.0, height : 25.0 }
+  , valueSize : const $ const { width : 200.0, height : 25.0 }
   }
 
 
 modes :: YogaSvgTree.Modes
 modes =
   { nodeMode : YST.NodeWithLabel
-  , previewMode : YST.NodeWithLabel
+  , previewMode : YST.Component
   , edgeMode : YST.EdgeWithLabel
   }
 
@@ -178,7 +178,7 @@ component =
       , size : reduceSize $ fromMaybe defaultSize state.window
       }
 
-  child :: forall q o. YogaSvgTree.NodeComponent q o m Item
+  child :: YogaSvgTree.NodeComponent m Item
   child = H.mkComponent
     { initialState : identity
     , render : show >>> HH.text >>> pure >>> HS.text [ HSA.fill $ HSA.RGB 0 0 0 ]
