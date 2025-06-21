@@ -5,32 +5,30 @@ module Yoga.Tree.Svg
 
 import Prelude
 
--- import Debug as Debug
-
-
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Array ((:))
-import Data.Array (fromFoldable, dropEnd, length) as Array
+import Data.Array (fromFoldable, dropEnd, length, snoc, last) as Array
 import Data.FunctorWithIndex (mapWithIndex)
-import Data.String (take) as String
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
 import Data.Set (empty, insert, delete, isEmpty, member) as Set
+import Data.String (take) as String
 
 import Halogen as H
 import Halogen.HTML as HH
-import Halogen.HTML.Properties as HP
 import Halogen.HTML.Events as HE
+import Halogen.HTML.Properties as HP
 import Halogen.Svg.Attributes as HSA
 import Halogen.Svg.Elements as HS
-
+import Web.HTML.Window (history)
 import Web.UIEvent.WheelEvent as Wheel
 
 import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value) as Tree
-import Yoga.Tree.Extended.Path (Path)
-import Yoga.Tree.Extended.Path (Path(..), find, root, toArray) as Path
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
+import Yoga.Tree.Extended.Path (Path(..), find, root, toArray) as Path
+import Yoga.Tree.Extended.Path (Path)
 import Yoga.Tree.Svg.Render as SvgTree
+
 -- import Yoga.Tree.Zipper (Path)
 
 
@@ -44,6 +42,7 @@ data Action a
     | ResetZoom
     | Pin Path
     | UnPin Path
+    | HistoryBack
     -- | Advance Int
     -- | GoUp
 
@@ -63,7 +62,7 @@ data Preview
 type State a =
     { tree :: Tree a
     , focus :: Path
-    , prevFocus :: Maybe Path
+    , history :: Array Path
     , preview :: Preview
     , pinned :: Set Path
     , zoom :: Number
@@ -103,7 +102,7 @@ component' modes config mbChildComp =
 
   initialState :: Input a -> State a
   initialState { tree, size } =
-    { tree, focus : Path.root, prevFocus : Nothing, zoom : 1.0, size, preview : None, pinned : Set.empty }
+    { tree, focus : Path.root, history : [ Path.root ], zoom : 1.0, size, preview : None, pinned : Set.empty }
 
   receive :: Input a -> State a -> State a
   receive { tree, size } =
@@ -187,10 +186,9 @@ component' modes config mbChildComp =
       {- Path Breadcrumbs -}
       , HH.div
           [ HP.style "position: absolute; right: 0; top: 20px;" ]
-          [ case state.prevFocus of
-            Just prevFocus ->
-              qbutton "Back" $ FocusOn prevFocus
-            Nothing -> HH.text ""
+          [ case state.history of
+              [] -> HH.text ""
+              _  -> qbutton "Back" HistoryBack
           , case Path.toArray state.focus of
               [] -> HH.text "*"
               path ->
@@ -226,6 +224,14 @@ component' modes config mbChildComp =
           ]
           $ wrapPinUnpin true state.pinned state.tree
           <$> Array.fromFoldable state.pinned
+
+      {- History -}
+      , HH.div
+          [ HP.style $ "position: absolute; right: 0; top: 600px;"
+          ]
+          $ (HH.div [] <<< pure <<< HH.text <<< show)
+          <$> state.history
+
       ]
 
   wrapPinUnpin allowGo pinned tree nodePath =
@@ -243,7 +249,13 @@ component' modes config mbChildComp =
       ]
 
   updateFocus newPath s =
-    s { focus = newPath, prevFocus = if s.focus /= newPath then Just s.focus else s.prevFocus }
+    s
+      { focus = newPath
+      , history =
+          if (s.focus /= newPath) && (Array.last s.history /= Just newPath)
+            then Array.snoc s.history newPath
+            else s.history
+      }
 
   handleAction = case _ of
     Receive input ->
@@ -271,3 +283,11 @@ component' modes config mbChildComp =
       H.modify_ \s -> s { pinned = s.pinned # Set.insert path }
     UnPin path ->
       H.modify_ \s -> s { pinned = s.pinned # Set.delete path }
+    HistoryBack -> do
+      state <- H.get
+      let mbLastItem = Array.last state.history
+      case mbLastItem of
+        Just prevFocus ->
+          H.modify_ \s -> s { focus = prevFocus, history = Array.dropEnd 1 s.history }
+        Nothing ->
+          pure unit
