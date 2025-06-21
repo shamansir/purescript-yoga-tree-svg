@@ -6,7 +6,7 @@ import Prelude
 
 import Type.Proxy (Proxy(..))
 
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Foldable (foldl, foldr)
 import Data.Traversable (traverse)
 import Data.Tuple (uncurry)
@@ -116,27 +116,33 @@ component config childComp =
     , valueOut   : NodeOut
     }
 
-  rootButton :: _
-  rootButton =
-    HH.button
+  rootButton :: (Path -> a -> String) -> Tree a -> _
+  rootButton toLabel tree =
+    let
+      mbValueAt = tree # Path.find Path.root <#> Tree.value
+      buttonLabel = maybe "*" (\val -> "* (" <> toLabel Path.root val <> ")") mbValueAt
+    in  HH.button
           [ HP.style "cursor: pointer; pointer-events: all;"
           , HE.onClick $ const $ FocusOn $ Path.root
           ]
-          [ HH.text $ "*" ]
+          [ HH.text buttonLabel ]
 
-  pathButton :: Array Int -> Int -> Int -> _
-  pathButton fullPath pIndex pValue =
+  pathButton :: (Path -> a -> String) -> Tree a -> Array Int -> Int -> Int -> _
+  pathButton toLabel tree fullPath pIndex pValue =
     let
       pathLen = Array.length fullPath
       isLast = pIndex == (pathLen - 1)
+      curPath = Path.Path $ Array.dropEnd (max 0 $ pathLen - pIndex - 1) fullPath
+      mbValueAt = tree # Path.find curPath <#> Tree.value
+      buttonLabel = maybe (show pValue) (\val -> show pValue <> " (" <> toLabel curPath val <> ")") mbValueAt
     in
     if not isLast
       then HH.button
           [ HP.style "cursor: pointer; pointer-events: all;"
-          , HE.onClick $ const $ FocusOn $ Path.Path $ Array.dropEnd (max 0 $ pathLen - pIndex - 1) fullPath
+          , HE.onClick $ const $ FocusOn curPath
           ]
-          [ HH.text $ show pValue ]
-      else HH.text $ show pValue
+          [ HH.text buttonLabel ]
+      else HH.text buttonLabel
 
   previewAt tree previewPath =
     case Path.find previewPath tree of
@@ -186,8 +192,8 @@ component config childComp =
               path ->
                 HH.div
                   []
-                  $ rootButton
-                  : mapWithIndex (pathButton path) path
+                  $ rootButton config.valueLabel state.tree
+                  : mapWithIndex (pathButton config.valueLabel state.tree path) path
       , HH.div
           [ HP.style $ "position: absolute; right: 0; top: 100px; " <> case state.preview of
             Focused _ -> "opacity: 1.0;"
