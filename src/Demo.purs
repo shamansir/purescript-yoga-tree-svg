@@ -140,7 +140,7 @@ config =
   , edgeLabel : \_ _ _ _ -> "E"
   , valueLabel : const show
   , valueColor : const $ const $ HSA.RGB 200 200 200
-  , valueSize : const $ const { width : 200.0, height : 25.0 }
+  , valueSize  : const $ const { width : 200.0, height : 25.0 }
   }
 
 
