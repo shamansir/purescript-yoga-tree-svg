@@ -1,0 +1,24 @@
+{
+  "name": "purescript-yoga-tree-svg",
+  "version": "1.0.0",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shamansir/purescript-yoga-tree-svg.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/shamansir/purescript-yoga-tree-svg/issues"
+  },
+  "homepage": "https://github.com/shamansir/purescript-yoga-tree-svg#readme",
+  "description": "",
+  "devDependencies": {
+    "parcel": "^2.15.4"
+  }
+}
