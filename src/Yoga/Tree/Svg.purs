@@ -42,7 +42,6 @@ data Action a
     | ResetZoom
     | Pin Path
     | UnPin Path
-    | HistoryBack
     -- | Advance Int
     -- | GoUp
 
@@ -120,7 +119,7 @@ component' modes config mbChildComp =
     let
       mbValueAt = tree # Path.find Path.root <#> Tree.value
       buttonLabel = maybe "*" (\val -> toLabel Path.root val <> " [*]") mbValueAt
-    in qbutton buttonLabel $ FocusOn Path.root
+    in pathCellButton buttonLabel $ Just $ FocusOn Path.root
 
   pathButton :: (Path -> a -> String) -> Tree a -> Array Int -> Int -> Int -> _
   pathButton toLabel tree fullPath pIndex pValue =
@@ -132,8 +131,8 @@ component' modes config mbChildComp =
       buttonLabel = maybe (show pValue) (\val -> toLabel curPath val <> " [" <> show pValue <> "]") mbValueAt
     in
     if not isLast
-      then qbutton buttonLabel $ FocusOn curPath
-      else HH.text buttonLabel
+      then pathCellButton buttonLabel $ Just $ FocusOn curPath
+      else pathCellButton buttonLabel Nothing
 
   previewAt tree previewPath =
     case Path.find previewPath tree of
@@ -141,10 +140,23 @@ component' modes config mbChildComp =
         SvgTree.renderPreview' modes.previewMode config mbChildComp previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
+  
+  buttonStyle   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid black; font-family: sans-serif; font-size: 11px;"
+  pathCellStyle = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid blue;  font-family: sans-serif; font-size: 11px;" 
+  
+  pathCellButton label = case _ of 
+    Just action -> qbutton' pathCellStyle label action
+    Nothing -> 
+      HH.span
+        [ HP.style pathCellStyle ]
+        [ HH.text label ]
+        
 
-  qbutton label action =
+  qbutton = qbutton' buttonStyle   
+
+  qbutton' style label action =
     HH.button
-      [ HP.style "cursor: pointer; pointer-events: all;"
+      [ HP.style style
       , HE.onClick $ const action
       ]
       [ HH.text label ]
@@ -178,7 +190,7 @@ component' modes config mbChildComp =
       {- Zoom & Size -}
       , HH.div
         [ HP.style "position: absolute; right: 0; top: 0;" ]
-        [ qbutton "ResetZoom" ResetZoom
+        [ qbutton "Reset zoom" ResetZoom
         , HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom)
         , HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height
         ]
@@ -186,11 +198,8 @@ component' modes config mbChildComp =
       {- Path Breadcrumbs -}
       , HH.div
           [ HP.style "position: absolute; right: 0; top: 20px;" ]
-          [ case state.history of
-              [] -> HH.text ""
-              _  -> qbutton "Back" HistoryBack
-          , case Path.toArray state.focus of
-              [] -> HH.text "*"
+          [ case Path.toArray state.focus of
+              [] -> pathCellButton "*" Nothing 
               path ->
                 HH.div
                   []
@@ -283,6 +292,7 @@ component' modes config mbChildComp =
       H.modify_ \s -> s { pinned = s.pinned # Set.insert path }
     UnPin path ->
       H.modify_ \s -> s { pinned = s.pinned # Set.delete path }
+    {-  
     HistoryBack -> do
       state <- H.get
       let mbLastItem = Array.last state.history
@@ -291,3 +301,4 @@ component' modes config mbChildComp =
           H.modify_ \s -> s { focus = prevFocus, history = Array.dropEnd 1 s.history }
         Nothing ->
           pure unit
+    -}     
