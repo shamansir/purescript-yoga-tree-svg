@@ -6,7 +6,7 @@ module Yoga.Tree.Svg
 import Prelude
 
 import Data.Array ((:))
-import Data.Array (fromFoldable, dropEnd, length, snoc, last) as Array
+import Data.Array (take, fromFoldable, dropEnd, length, snoc, last) as Array
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
@@ -25,7 +25,7 @@ import Web.UIEvent.WheelEvent as Wheel
 import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value) as Tree
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
-import Yoga.Tree.Extended.Path (find, root, toArray) as Path
+import Yoga.Tree.Extended.Path (find, root, toArray, depth) as Path
 import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Svg.Render as SvgTree
 
@@ -156,7 +156,7 @@ component' modes config mbChildComp =
       {- Zoom & Size -}
       , HH.div
         [ HP.style "position: absolute; right: 0; top: 0;" ]
-        [ qbutton "Reset zoom" ResetZoom
+        [ _qbutton "Reset zoom" ResetZoom
         , HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom)
         , HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height
         ]
@@ -164,14 +164,7 @@ component' modes config mbChildComp =
       {- Path Breadcrumbs -}
       , HH.div
           [ HP.style "position: absolute; right: 0; top: 20px;" ]
-          [ case Path.toArray state.focus of
-              [] -> pathCellButton "*" Nothing 
-              path ->
-                HH.div
-                  []
-                  $ _rootButton config.valueLabel state.tree
-                  : mapWithIndex (_pathButton config.valueLabel state.tree path) path
-          ]
+          [ renderPath Breadcrumbs config state.tree state.focus ]
 
       {- Current Preview(s) -}
       , HH.div
@@ -213,14 +206,14 @@ component' modes config mbChildComp =
     HH.div
       []
       [ if not $ Set.member nodePath pinned then
-          qbutton "Pin" $ Pin nodePath
+          _qbutton "Pin" $ Pin nodePath
         else
-          qbutton "Unpin" $ UnPin nodePath
+          _qbutton "Unpin" $ UnPin nodePath
       , HH.text $ show nodePath
       , if allowGo then
-          qbutton "Go" $ FocusOn nodePath
+          _qbutton "Go" $ FocusOn nodePath
         else HH.text ""
-      , previewAt tree nodePath
+      ,   previewAt tree nodePath
       ]
 
   updateFocus newPath s =
@@ -269,15 +262,12 @@ component' modes config mbChildComp =
           pure unit
     -}     
     
-drawPath :: forall a p i. PathMode -> Tree a -> Path -> HH.HTML p i 
-drawPath mode tree (Path fullPath) = HH.div [] []
 
+_qbutton :: forall p action. String -> action -> HH.HTML p action
+_qbutton = _qbutton' _buttonStyle   
 
-qbutton :: forall p action. String -> action -> HH.HTML p action
-qbutton = qbutton' buttonStyle   
-
-qbutton' :: forall p action. String -> String -> action -> HH.HTML p action
-qbutton' style label action =
+_qbutton' :: forall p action. String -> String -> action -> HH.HTML p action
+_qbutton' style label action =
     HH.button
       [ HP.style style
       , HE.onClick $ const action
@@ -285,36 +275,70 @@ qbutton' style label action =
       [ HH.text label ]
 
 
-buttonStyle   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid black; font-family: sans-serif; font-size: 11px;" :: String
-pathCellStyle = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid blue;  font-family: sans-serif; font-size: 11px;" :: String 
+_buttonStyle   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid black; font-family: sans-serif; font-size: 11px;" :: String
+_pathStepStyle = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid blue;  font-family: sans-serif; font-size: 11px;" :: String 
   
 
-pathCellButton :: forall p a. String -> Maybe (Action a) -> HH.HTML p (Action a)
-pathCellButton label = case _ of 
-    Just action -> qbutton' pathCellStyle label action
+_pathStepButtonRaw :: forall p a. String -> Maybe (Action a) -> HH.HTML p (Action a)
+_pathStepButtonRaw label = case _ of 
+    Just action -> _qbutton' _pathStepStyle label action
     Nothing -> 
       HH.span
-        [ HP.style pathCellStyle ]
+        [ HP.style _pathStepStyle ]
         [ HH.text label ]
 
 
-_rootButton :: forall a p. (Path -> a -> String) -> Tree a -> HH.HTML p (Action a)
-_rootButton toLabel tree =
+_pathStepLabel :: forall a. (Path -> a -> String) -> Path -> Tree a -> Int -> Int -> String
+_pathStepLabel toLabel fullPath tree pStepIndex pStepValue = 
+  let
+      curPath = Path.toArray fullPath # Array.take pStepIndex # Path 
+      mbValueAt = tree # Path.find curPath <#> Tree.value
+      pathDepth = Path.depth curPath
+  in 
+      if pathDepth == 0 then 
+          maybe "*" (\val -> toLabel Path.root val <> " [*]") mbValueAt
+      else 
+          maybe (show pStepValue) (\val -> toLabel curPath val <> " [" <> show pStepValue <> "]") mbValueAt
+
+
+_pathRootButton :: forall a p. (Path -> a -> String) -> Tree a -> HH.HTML p (Action a)
+_pathRootButton toLabel tree =
     let
       mbValueAt = tree # Path.find Path.root <#> Tree.value
       buttonLabel = maybe "*" (\val -> toLabel Path.root val <> " [*]") mbValueAt
-    in pathCellButton buttonLabel $ Just $ FocusOn Path.root
+    in _pathStepButtonRaw buttonLabel $ Just $ FocusOn Path.root
 
 
-_pathButton :: forall a p. (Path -> a -> String) -> Tree a -> Array Int -> Int -> Int -> HH.HTML p (Action a)
-_pathButton toLabel tree fullPath pIndex pValue =
+_pathStepButton :: forall a p. (Path -> a -> String) -> Tree a -> Path -> Int -> Int -> HH.HTML p (Action a)
+_pathStepButton toLabel tree fullPath pIndex pValue =
     let
-      pathLen = Array.length fullPath
-      isLast = pIndex == (pathLen - 1)
-      curPath = Path $ Array.dropEnd (max 0 $ pathLen - pIndex - 1) fullPath
+      pathDepth = Path.depth fullPath
+      isLast = pIndex == (pathDepth - 1)
+      curPath = Path $ Array.take (pIndex + 1) $ Path.toArray fullPath  --Array.dropEnd (max 0 $ pathLen - pIndex - 1) fullPath
       mbValueAt = tree # Path.find curPath <#> Tree.value
       buttonLabel = maybe (show pValue) (\val -> toLabel curPath val <> " [" <> show pValue <> "]") mbValueAt
     in
     if not isLast
-      then pathCellButton buttonLabel $ Just $ FocusOn curPath
-      else pathCellButton buttonLabel Nothing
+      then _pathStepButtonRaw buttonLabel $ Just $ FocusOn curPath
+      else _pathStepButtonRaw buttonLabel Nothing
+      
+
+renderPath :: forall p a. PathMode -> SvgTree.Config a -> Tree a -> Path -> HH.HTML p (Action a)
+renderPath Breadcrumbs config tree path =
+  case Path.toArray path of
+    [] -> _pathStepButtonRaw "*" Nothing 
+    pathArr ->
+      HH.div
+        []
+        $ _pathRootButton config.valueLabel tree
+        : mapWithIndex (_pathStepButton config.valueLabel tree path) pathArr
+renderPath ReadOnly config tree path =
+  HH.div 
+    [] 
+    []
+renderPath SingleGo config tree path =
+  HH.div  
+    []
+    [ renderPath ReadOnly config tree path
+    , _qbutton "Go" $ FocusOn path 
+    ]
