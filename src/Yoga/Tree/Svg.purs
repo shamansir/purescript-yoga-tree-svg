@@ -193,14 +193,26 @@ component' modes config mbChildComp =
       , HH.div
         [ HP.style "position: absolute; right: 0; top: 0; user-select: none;" ]
         [ _qbutton "Reset zoom" ResetZoom
-        , HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom)
-        , HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height
+        , HH.span [ HP.style _infoStyle ] [ HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom) ]
+        , HH.span [ HP.style _infoStyle ] [ HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height ]
+        ]
+
+      {- Keyboard info -}
+
+      , HH.div 
+        []
+        [ HH.span [ HP.style _infoBlStyle ] [ HH.text "\"+\" to slightly zoom in" ]
+        , HH.span [ HP.style _infoBlStyle ] [ HH.text "\"-\" to slightly zoom out" ]
+        , HH.span [ HP.style _infoBlStyle ] [ HH.text "\"=\" to reset zoom" ]
         ]
 
       {- Path Breadcrumbs -}
       , HH.div
-          [ HP.style "position: absolute; right: 0; top: 20px;" ]
-          [ renderPath Breadcrumbs config state.tree state.focus ]
+          -- [ HP.style "position: absolute; right: 0; top: 20px;" ]
+          [ HP.style "position: absolute; left: 0; top: 120px;" ]
+          [ HH.text "Location: "
+          , renderPath Breadcrumbs config state.tree state.focus 
+          ]
 
       {- Current Preview(s) -}
       , HH.div
@@ -280,8 +292,14 @@ component' modes config mbChildComp =
             $ state.zoom + (dy * 0.1)
           }
       )
-    HandleKey sid ev ->
-      pure unit
+    HandleKey sid evt ->
+      if {- KE.shiftKey evt && -} KE.key evt == "+" then
+        H.modify_ \s -> s { zoom = s.zoom + 0.1 }
+      else if {- KE.shiftKey evt && -} KE.key evt == "-" then  
+        H.modify_ \s -> s { zoom = s.zoom - 0.1 }
+      else if KE.key evt == "=" then
+        H.modify_ \s -> s { zoom = 1.0 }
+      else pure unit
     ResetZoom ->
       H.modify_ _ { zoom = 1.0 }
     FocusOn path ->
@@ -322,7 +340,9 @@ _qbutton' style label action =
 
 _buttonStyle   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid black; font-family: sans-serif; font-size: 11px; user-select: none;" :: String
 _pathStepStyle = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid blue;  font-family: sans-serif; font-size: 11px; user-select: none;" :: String 
-  
+_infoStyle     = "padding: 2px 5px;" :: String 
+_infoBlStyle   = "padding: 2px 5px; display: block;" :: String 
+
 
 _pathStepButtonRaw :: forall p a. String -> Maybe (Action a) -> HH.HTML p (Action a)
 _pathStepButtonRaw label = case _ of 
@@ -360,7 +380,8 @@ _pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
 renderPath :: forall p a. PathMode -> SvgTree.Config a -> Tree a -> Path -> HH.HTML p (Action a)
 renderPath Breadcrumbs config tree path =
   case Path.toArray path of
-    [] -> _pathStepButtonRaw "*" Nothing 
+    [] -> 
+      HH.div [] [ _pathStepButtonRaw "*" Nothing ]
     pathArr ->
       HH.div
         []
