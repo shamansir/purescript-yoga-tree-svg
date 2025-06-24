@@ -395,4 +395,5 @@ _strokeFromStatus = case _ of
   FocusRoot -> HSA.RGB 0 70 0
   HoverFocus -> HSA.RGB 255 0 0
   HoverGhost -> HSA.RGB 170 0 0
+  Selected -> HSA.RGB 0 0 255
   _ -> HSA.RGB 0 0 0

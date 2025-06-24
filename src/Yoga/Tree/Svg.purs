@@ -6,6 +6,7 @@ module Yoga.Tree.Svg
 import Prelude
 
 import Effect.Class (class MonadEffect)
+import Effect.Console (log) as Console
 
 import Data.Array ((:))
 import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse) as Array
@@ -13,7 +14,7 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
 import Data.Set (empty, insert, delete, isEmpty, member) as Set
-import Data.String (take) as String
+import Data.String (take, toLower) as String
 import Data.Tuple.Nested ((/\))
 import Data.Graph (Graph)
 import Data.Graph (fromMap, toMap) as Graph
@@ -37,7 +38,7 @@ import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value) as Tree
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Extended.Path (Path(..))
-import Yoga.Tree.Extended.Path (find, root, toArray, depth) as Path
+import Yoga.Tree.Extended.Path (find, root, toArray, depth, advance) as Path
 import Yoga.Tree.Svg.Render (WithStatus)
 import Yoga.Tree.Svg.Render as SvgTree
 
@@ -86,6 +87,7 @@ type State a =
     , pinned :: Set Path
     , zoom :: Number
     , size :: { width :: Number, height :: Number }
+    , selection :: Maybe Path
     }
 
 
@@ -122,7 +124,15 @@ component' modes config mbChildComp =
 
   initialState :: Input a -> State a
   initialState { tree, size } =
-    { tree, focus : Path.root, history : [ Path.root ], zoom : 1.0, size, preview : None, pinned : Set.empty }
+    { tree
+    , focus : Path.root
+    , history : [ Path.root ]
+    , zoom : 1.0
+    , size
+    , preview : None
+    , pinned : Set.empty 
+    , selection : Nothing 
+    }
 
   receive :: Input a -> State a -> State a
   receive { tree, size } =
@@ -149,12 +159,20 @@ component' modes config mbChildComp =
           if state.focus == path 
             then SvgTree.FocusRoot 
             else SvgTree.Normal
-    in case state.preview of 
-      Focused previewPath -> 
-        if previewPath == path then SvgTree.HoverFocus else checkFocus
-      LostFocus previewPath ->
-        if previewPath == path then SvgTree.HoverGhost else checkFocus
-      None -> checkFocus
+        checkPreview =
+          case state.preview of 
+            Focused previewPath -> 
+               if previewPath == path then SvgTree.HoverFocus else checkFocus
+            LostFocus previewPath ->
+               if previewPath == path then SvgTree.HoverGhost else checkFocus
+            None -> checkFocus
+        checkSelection =
+          case state.selection of 
+            Just selPath ->
+              if selPath == path then SvgTree.Selected else checkPreview
+            Nothing ->
+              checkPreview
+    in checkSelection
 
   injectStatuses :: State a -> Graph Path a -> Graph Path (WithStatus a)
   injectStatuses state = 
@@ -201,17 +219,44 @@ component' modes config mbChildComp =
 
       , HH.div 
         []
-        [ HH.span [ HP.style _infoBlStyle ] [ HH.text "\"+\" to slightly zoom in" ]
-        , HH.span [ HP.style _infoBlStyle ] [ HH.text "\"-\" to slightly zoom out" ]
-        , HH.span [ HP.style _infoBlStyle ] [ HH.text "\"=\" to reset zoom" ]
-        ]
+        $ HH.span [ HP.style _infoBlStyle ] <$> pure <$>
+          (
+          [ HH.text "\"+\" to slightly zoom in"
+          , HH.text "\"-\" to slightly zoom out"
+          , HH.text "\"=\" to reset zoom"
+          ]
+          <> 
+          case state.selection of 
+            Just _ -> 
+                [ HH.text "<Escape> to cancel selection"
+                , HH.text "<number> to select move to a next child"
+                , HH.text "arrows to navigate tree up/down/right/left"
+                , HH.text "<Enter> to navigate to selected node"
+                , HH.text "<Space> to pin selected node"
+                ]
+            Nothing -> 
+                [ HH.text "<Space> to start navigating with keyboard" 
+                ]
+          )
 
       {- Path Breadcrumbs -}
       , HH.div
           -- [ HP.style "position: absolute; right: 0; top: 20px;" ]
-          [ HP.style "position: absolute; left: 0; top: 120px;" ]
+          [ HP.style $ case state.selection of 
+            Just _ -> "position: absolute; left: 0; top: 200px;"
+            Nothing -> "position: absolute; left: 0; top: 120px;"
+          ]
           [ HH.text "Location: "
           , renderPath Breadcrumbs config state.tree state.focus 
+          , case state.selection of 
+              Just selPath -> 
+                HH.div 
+                  [] 
+                  [ HH.text "Selection:" 
+                  , renderPath Breadcrumbs config state.tree selPath  
+                  ]
+              Nothing -> 
+                HH.text ""
           ]
 
       {- Current Preview(s) -}
@@ -292,14 +337,10 @@ component' modes config mbChildComp =
             $ state.zoom + (dy * 0.1)
           }
       )
-    HandleKey sid evt ->
-      if {- KE.shiftKey evt && -} KE.key evt == "+" then
-        H.modify_ \s -> s { zoom = s.zoom + 0.1 }
-      else if {- KE.shiftKey evt && -} KE.key evt == "-" then  
-        H.modify_ \s -> s { zoom = s.zoom - 0.1 }
-      else if KE.key evt == "=" then
-        H.modify_ \s -> s { zoom = 1.0 }
-      else pure unit
+    HandleKey sid evt -> do
+      H.liftEffect $ Console.log $ "key:" <> KE.key evt 
+      H.liftEffect $ Console.log $ "code:" <> KE.code evt
+      handleKey $ KE.key evt
     ResetZoom ->
       H.modify_ _ { zoom = 1.0 }
     FocusOn path ->
@@ -314,17 +355,63 @@ component' modes config mbChildComp =
       H.modify_ \s -> s { pinned = s.pinned # Set.insert path }
     UnPin path ->
       H.modify_ \s -> s { pinned = s.pinned # Set.delete path }
-    {-  
-    HistoryBack -> do
-      state <- H.get
-      let mbLastItem = Array.last state.history
-      case mbLastItem of
-        Just prevFocus ->
-          H.modify_ \s -> s { focus = prevFocus, history = Array.dropEnd 1 s.history }
-        Nothing ->
-          pure unit
-    -}     
-    
+
+  handleKey key | key == "+" = H.modify_ \s -> s { zoom = s.zoom + 0.1 }
+  handleKey key | key == "-" = H.modify_ \s -> s { zoom = s.zoom - 0.1 }
+  handleKey key | key == "=" = H.modify_ _ { zoom = 1.0 }
+  handleKey key | key == " " = 
+      H.modify_ \s -> 
+        case s.selection of 
+            Just path -> 
+              s { pinned = s.pinned # Set.insert path }
+            Nothing -> 
+              s { selection = Just s.focus }
+  handleKey key | String.toLower key == "escape" = H.modify_ \s -> s { selection = Nothing }
+  handleKey key = do 
+    s <- H.get 
+    case s.selection of 
+        Just selPath ->
+          case _isNumberKey key of 
+             Just num -> 
+               H.modify_ \s -> s { selection = Just (selPath # Path.advance num) }
+             Nothing ->
+               case _isArrowKey key of 
+                 Just dir -> 
+                   pure unit
+                 Nothing -> 
+                   pure unit
+        Nothing ->  
+          pure unit  
+
+data Dir 
+  = Up 
+  | Down 
+  | Right 
+  | Left
+
+_isNumberKey :: String -> Maybe Int
+_isNumberKey = case _ of 
+    "0" -> Just 0
+    "1" -> Just 1
+    "2" -> Just 2
+    "3" -> Just 3
+    "4" -> Just 4
+    "5" -> Just 5
+    "6" -> Just 6
+    "7" -> Just 7
+    "8" -> Just 8
+    "9" -> Just 9
+    _   -> Nothing
+
+
+_isArrowKey :: String -> Maybe Dir 
+_isArrowKey = case _ of 
+    "ArrowUp" -> Just Up
+    "ArrowDown" -> Just Down
+    "ArrowRight" -> Just Right
+    "ArrowLeft" -> Just Left
+    _ -> Nothing
+
 
 _qbutton :: forall p action. String -> action -> HH.HTML p action
 _qbutton = _qbutton' _buttonStyle   
