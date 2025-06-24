@@ -5,20 +5,18 @@ module Yoga.Tree.Svg
 
 import Prelude
 
-import Effect.Class (class MonadEffect)
-import Effect.Console (log) as Console
-
 import Data.Array ((:))
 import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse) as Array
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.Graph (Graph)
+import Data.Graph (fromMap, toMap) as Graph
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
 import Data.Set (empty, insert, delete, isEmpty, member) as Set
 import Data.String (take, toLower) as String
 import Data.Tuple.Nested ((/\))
-import Data.Graph (Graph)
-import Data.Graph (fromMap, toMap) as Graph
-
+import Effect.Class (class MonadEffect)
+import Effect.Console (log) as Console
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
@@ -26,16 +24,14 @@ import Halogen.HTML.Properties as HP
 import Halogen.Query.Event (eventListener)
 import Halogen.Svg.Attributes as HSA
 import Halogen.Svg.Elements as HS
-
 import Web.HTML (window, HTMLDocument)
 import Web.HTML.HTMLDocument as HTMLDocument
 import Web.HTML.Window (document, history)
-import Web.UIEvent.WheelEvent as WE
 import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
-
+import Web.UIEvent.WheelEvent as WE
 import Yoga.Tree (Tree)
-import Yoga.Tree.Extended (value) as Tree
+import Yoga.Tree.Extended (value, children) as Tree
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path (find, root, toArray, depth, advance) as Path
@@ -169,7 +165,7 @@ component' modes config mbChildComp =
         checkSelection =
           case state.selection of 
             Just selPath ->
-              if selPath == path then SvgTree.Selected else checkPreview
+              if selPath == path then SvgTree.Selected else checkPreview -- TODO: if Path.startsWith selPath path then NextLevel // if Path.nextFor selPath path NextLevel
             Nothing ->
               checkPreview
     in checkSelection
@@ -236,6 +232,7 @@ component' modes config mbChildComp =
                 ]
             Nothing -> 
                 [ HH.text "<Space> to start navigating with keyboard" 
+                , if Path.depth state.focus > 0 then HH.text "\"*\" or <Tab> to return to the root" else HH.text ""
                 ]
           )
 
@@ -366,22 +363,38 @@ component' modes config mbChildComp =
               s { pinned = s.pinned # Set.insert path }
             Nothing -> 
               s { selection = Just s.focus }
-  handleKey key | String.toLower key == "escape" = H.modify_ \s -> s { selection = Nothing }
+  handleKey key | key == "*" = H.modify_ $ updateFocus Path.root
+  handleKey key | String.toLower key == "tab" = H.modify_ $ updateFocus Path.root
+  handleKey key | String.toLower key == "escape" = 
+      H.modify_ \s -> s { selection = Nothing }
+  handleKey key | String.toLower key == "enter" = do 
+      s <- H.get 
+      H.put $ case s.selection of 
+              Just path -> 
+                updateFocus path $ s { selection = Nothing }
+              Nothing -> s
+  -- TODO backspace : go to second last in the history
+  -- TODO `up` in normal mode: move focus up
   handleKey key = do 
     s <- H.get 
-    case s.selection of 
-        Just selPath ->
-          case _isNumberKey key of 
-             Just num -> 
-               H.modify_ \s -> s { selection = Just (selPath # Path.advance num) }
-             Nothing ->
-               case _isArrowKey key of 
-                 Just dir -> 
-                   pure unit
-                 Nothing -> 
-                   pure unit
-        Nothing ->  
-          pure unit  
+    _whenJust s.selection \selPath -> do
+      _whenJust (_isNumberKey key) \num -> 
+        _whenJust (Path.find selPath s.tree) \subTree -> 
+          if num < Array.length (Tree.children subTree) then 
+            H.put $ s { selection = Just (selPath # Path.advance num) } -- TODO:Path.safeAdvance selPath num tree
+          else pure unit
+      _whenJust (_isArrowKey key) $ case _ of -- TODO Path.advanceDir selPath dir tree 
+          Up -> pure unit
+          Down -> pure unit
+          Right -> pure unit
+          Left -> pure unit
+        
+
+_whenJust :: forall a m. Applicative m => Maybe a -> (a -> m Unit) -> m Unit
+_whenJust maybe f =
+    case maybe of 
+        Just v -> f v  
+        Nothing -> pure unit
 
 data Dir 
   = Up 
