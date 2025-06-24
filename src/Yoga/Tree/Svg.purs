@@ -14,6 +14,9 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
 import Data.Set (empty, insert, delete, isEmpty, member) as Set
 import Data.String (take) as String
+import Data.Tuple.Nested ((/\))
+import Data.Graph (Graph)
+import Data.Graph (fromMap, toMap) as Graph
 
 import Halogen as H
 import Halogen.HTML as HH
@@ -35,6 +38,7 @@ import Yoga.Tree.Extended (value) as Tree
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path (find, root, toArray, depth) as Path
+import Yoga.Tree.Svg.Render (WithStatus)
 import Yoga.Tree.Svg.Render as SvgTree
 
 -- import Yoga.Tree.Zipper (Path)
@@ -134,9 +138,18 @@ component' modes config mbChildComp =
   previewAt tree previewPath =
     case Path.find previewPath tree of
       Just previewNode ->
-        SvgTree.renderPreview' modes.previewMode config mbChildComp previewPath $ Tree.value previewNode
+        SvgTree.renderPreview' modes.previewMode config mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
+
+  statusOf :: Path -> SvgTree.NodeStatus 
+  statusOf path = SvgTree.Normal 
+
+  injectStatuses :: Graph Path a -> Graph Path (WithStatus a)
+  injectStatuses = 
+      Graph.toMap 
+      >>> mapWithIndex (\path (a /\ xs) -> (statusOf path /\ a) /\ xs) 
+      >>> Graph.fromMap
   
   render :: State a -> _
   render state =
@@ -160,6 +173,7 @@ component' modes config mbChildComp =
             [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
             $ SvgTree.renderGraph' modes (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
             -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
+            $ injectStatuses
             $ Tree.toGraph' state.focus
             $ fromMaybe state.tree
             $ Path.find state.focus state.tree

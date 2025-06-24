@@ -1,11 +1,12 @@
 module Yoga.Tree.Svg.Render
     ( Slots, NodeSlot, _item, _preview
     , NodeQuery, NodeOutput
-    , NodeMode(..), EdgeMode(..)
+    , NodeMode(..), EdgeMode(..), NodeStatus(..)
     , Modes, Config, Events, Geometry
     , NodeComponent, NodeComponentInput, GraphHtml
     , renderGraph, renderGraph_, renderGraph'
     , renderPreview, renderPreview_, renderPreview'
+    , WithStatus
     )
     where
 
@@ -19,7 +20,7 @@ import Data.Symbol (class IsSymbol)
 import Data.Number (pi) as Number
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Graph (Graph, Edge)
-import Data.Graph (toMap, fromMap) as Graph
+import Data.Graph (toMap, fromMap, lookup) as Graph
 import Data.Map (empty, lookup, insert) as Map
 import Data.Array (fromFoldable, toUnfoldable) as Array
 import Data.Tuple (fst, snd) as Tuple
@@ -49,11 +50,13 @@ type NodeSlot = H.Slot NodeQuery NodeOutput Path
 type Slots =
   ( item    :: NodeSlot
   , preview :: NodeSlot
+  , pinned  :: NodeSlot
   )
 
 
 _item  = Proxy :: _ "item"
 _preview  = Proxy :: _ "preview"
+_pinned  = Proxy :: _ "pinned"
 
 
 data NodeQuery x = NodeQuery
@@ -70,6 +73,14 @@ data EdgeMode
     = JustEdge
     | EdgeWithLabel
 
+
+data NodeStatus
+    = Normal
+    | NavigationFocus 
+    | HoverFocus
+    | HoverGhost
+    | Selected
+    | Combo NodeStatus NodeStatus
 
 
 foldl' :: forall f a b. Foldable f => (b -> a -> b) -> f a -> b -> b
@@ -169,19 +180,35 @@ type NodeComponentInput a =
 type GraphHtml m i  = HTML (H.ComponentSlot Slots m i) i
 
 
-renderGraph :: forall a i m. Modes -> Geometry -> Config a -> Events i a -> Graph Path a -> Array (GraphHtml m i)
+type WithStatus a = NodeStatus /\ a
+  
+
+_statusOf :: forall a. WithStatus a -> NodeStatus
+_statusOf = Tuple.fst
+
+
+_valueOf :: forall a. WithStatus a -> a
+_valueOf = Tuple.snd
+
+
+renderGraph :: forall a i m. Modes -> Geometry -> Config a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
 renderGraph modes geom config = renderGraph' modes geom config Nothing
 
 
-renderGraph_ :: forall a i m. Modes -> Geometry -> Config a -> NodeComponent m a -> Events i a -> Graph Path a -> Array (GraphHtml m i)
+renderGraph_ :: forall a i m. Modes -> Geometry -> Config a -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
 renderGraph_ modes geom config childComp = renderGraph' modes geom config (Just childComp)
 
 
-renderGraph' :: forall a i m. Modes -> Geometry -> Config a -> Maybe (NodeComponent m a) -> Events i a -> Graph Path a -> Array (GraphHtml m i)
+renderGraph' :: forall a i m. Modes -> Geometry -> Config a -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
 renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
+        statusOf :: Path -> NodeStatus 
+        statusOf path = Graph.lookup path graph <#> _statusOf # fromMaybe Normal 
+        valuesGraph :: Graph Path a
+        valuesGraph = graph <#> _valueOf
         positionsMap :: PositionedGraphMap a
-        positionsMap = Graph.toMap $ distributePositions geom config.valueSize graph
+        positionsMap = Graph.toMap $ distributePositions geom config.valueSize valuesGraph
+        renderValue :: Path -> Positioned a -> _
         renderValue nodePath { x, y, value } =
             HS.g
                 [ HSA.transform $ pure $ HSA.Translate x y
@@ -191,7 +218,7 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
                 , HE.onMouseOut  $ const $ events.valueOut   nodePath value
                 ]
                 $ pure
-                $ _renderValue modes.nodeMode config _item mbComponent { x : 0.0, y : 0.0 } nodePath value
+                $ _renderValue modes.nodeMode config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
@@ -204,21 +231,22 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
                             , end   : { path : childPath,  pos : { x : child.x,  y: child.y  }, value : child.value  }
                             }
                 Nothing -> HS.g [] []
+        renderNode :: Path -> (Positioned a /\ List Path) -> _
         renderNode nodePath (a /\ paths) =
             (renderEdge nodePath a <$> Array.fromFoldable paths)
             <> [ renderValue nodePath a ]
 
 
-renderPreview :: forall a i m. NodeMode -> Config a -> Path -> a -> GraphHtml m i
+renderPreview :: forall a i m. NodeMode -> Config a -> NodeStatus -> Path -> a -> GraphHtml m i
 renderPreview nodeMode config = renderPreview' nodeMode config Nothing
 
 
-renderPreview_ :: forall a i m. NodeMode -> Config a -> NodeComponent m a -> Path -> a -> GraphHtml m i
+renderPreview_ :: forall a i m. NodeMode -> Config a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
 renderPreview_ nodeMode config childComp = renderPreview' nodeMode config (Just childComp)
 
 
-renderPreview' :: forall a i m. NodeMode -> Config a -> Maybe (NodeComponent m a) -> Path -> a -> GraphHtml m i
-renderPreview' nodeMode config mbComponent nodePath value =
+renderPreview' :: forall a i m. NodeMode -> Config a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPreview' nodeMode config mbComponent nodeStatus nodePath value =
     let
         previewSize = config.valueSize nodePath value
         position =
@@ -240,7 +268,7 @@ renderPreview' nodeMode config mbComponent nodePath value =
                 [ HHP.style "pointer-events: none;"
                 ]
                 $ pure
-                $ _renderValue nodeMode config _preview mbComponent position nodePath value
+                $ _renderValue nodeMode config _preview mbComponent nodeStatus position nodePath value
             ]
 
 
@@ -299,11 +327,12 @@ _renderValue
     -> Config a
     -> Proxy slot
     -> Maybe (NodeComponent m a)
+    -> NodeStatus
     -> Position
     -> Path
     -> a
     -> GraphHtml m i
-_renderValue NodeWithLabel config _ _ pos nodePath value =
+_renderValue NodeWithLabel config _ _ status pos nodePath value =
     HS.g
         []
         [ HS.circle
@@ -318,9 +347,10 @@ _renderValue NodeWithLabel config _ _ pos nodePath value =
             , HSA.x $ pos.x + 6.0
             , HSA.y $ pos.y + 9.0
             ]
-            [ HH.text $ config.valueLabel nodePath value ]
+            [ HH.text $ config.valueLabel nodePath value 
+            ]
         ]
-_renderValue JustNode config _ _ pos nodePath value =
+_renderValue JustNode config _ _ status pos nodePath value =
     HS.g
         []
         [ HS.circle
@@ -331,13 +361,13 @@ _renderValue JustNode config _ _ pos nodePath value =
             , HSA.stroke $ HSA.RGB 0 0 0
             ]
         ]
-_renderValue Component _ _ Nothing pos _ _ =
+_renderValue Component _ _ Nothing status pos _ _ =
     HS.text
         [ HSA.x pos.x, HSA.y pos.y
         , HSA.fill $ HSA.RGB 0 0 0
         ]
         [ HH.text "NO COMPONENT" ]
-_renderValue Component _ pslot (Just childComp) pos nodePath value =
+_renderValue Component _ pslot (Just childComp) status pos nodePath value =
     HS.g
         [ HSA.transform $ pure $ HSA.Translate pos.x pos.y ]
         $ pure
