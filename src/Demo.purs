@@ -41,7 +41,7 @@ import Web.HTML.Window (toEventTarget, innerWidth, innerHeight) as Window
 main :: Effect Unit
 main = HA.runHalogenAff do
   body <- HA.awaitBody
-  runUI component unit body
+  runUI (component myTree) unit body
 
 
 type Slots =
@@ -63,7 +63,11 @@ data Action
   | HandleResize
 
 
-type Item = Int
+newtype IntItem = IntItem Int
+
+
+ii :: Int -> IntItem
+ii = IntItem
 
 
 q :: forall n. n -> Tree n
@@ -105,36 +109,45 @@ ch = map Tree.leaf
 -}
 
 
-myTree :: Tree Item
+myTree :: Tree IntItem
 myTree =
-  1 :<
-    [ q 11
-    , 12 :<
-      [ 121 :< ch [ 1211, 1212 ]
-      , 122 :< ch [ 1221, 1222, 1223 ]
-      , q 123
-      , 124 :< ch [ 1241 ]
-      , q 125
+  ii 1 :<
+    [ q $ ii 11
+    , ii 12 :<
+      [ ii 121 :< ch [ ii 1211, ii 1212 ]
+      , ii 122 :< ch [ ii 1221, ii 1222, ii 1223 ]
+      , q $ ii 123
+      , ii 124 :< ch [ ii 1241 ]
+      , q $ ii 125
       ]
-    , 13 :< ch [ 131, 132, 133, 134, 135, 136, 137 ]
-    , q 14
-    , q 15
-    , 16 :< ch [ 161 ]
+    , ii 13 :< (ch $ ii <$> [ 131, 132, 133, 134, 135, 136, 137 ])
+    , q $ ii 14
+    , q $ ii 15
+    , ii 16 :< ch [ ii 161 ]
     ]
 
 
-simpleTree :: Tree Item
+simpleTree :: Tree IntItem
 simpleTree =
-  1 :<~
-    [ 11
-    , 12
-    , 13
-    , 14
-    , 15
-    ]
+  ii 1 :<~ 
+    (ii <$> 
+      [ 11
+      , 12
+      , 13
+      , 14
+      , 15
+      ]
+    )
 
 
-config :: YogaSvgTree.Config Item
+class Show a <= DemoItem a 
+
+
+derive newtype instance Show IntItem
+instance DemoItem IntItem
+
+
+config :: forall a. DemoItem a => YogaSvgTree.Config a
 config =
   { edgeColor : \_ _ _ _ -> HSA.RGB 0 0 0
   , edgeLabel : \_ _ _ _ -> "E"
@@ -152,8 +165,8 @@ modes =
   }
 
 
-component ∷ ∀ query input output m. MonadEffect m => H.Component query input output m
-component =
+component ∷ ∀ a query input output m. MonadEffect m => DemoItem a => Tree a -> H.Component query input output m
+component startFromTree =
   H.mkComponent
     { initialState
     , render
@@ -163,14 +176,14 @@ component =
       }
     }
   where
-  initialState :: input -> State Item
-  initialState _ = { tree : myTree, window : Nothing }
+  initialState :: input -> State a
+  initialState _ = { tree : startFromTree, window : Nothing }
 
   defaultSize = { width : 1000.0, height : 1000.0 }
 
   reduceSize { width, height } = { width : width - 10.0, height : height - 10.0 }
 
-  render :: forall action. State Item -> H.ComponentHTML action Slots m
+  render :: forall action. State a -> H.ComponentHTML action Slots m
   render state =
     HH.slot_ _tree unit
       (YogaSvgTree.component_ modes config child)
@@ -178,7 +191,7 @@ component =
       , size : reduceSize $ fromMaybe defaultSize state.window
       }
 
-  child :: YogaSvgTree.NodeComponent m Item
+  child :: YogaSvgTree.NodeComponent m a
   child = H.mkComponent
     { initialState : identity
     , render : show >>> HH.text >>> pure >>> HS.text [ HSA.fill $ HSA.RGB 0 0 0 ]

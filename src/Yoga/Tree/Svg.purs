@@ -92,15 +92,15 @@ type State a =
 type NodeComponent m a = SvgTree.NodeComponent m a
 
 
-component :: forall a query output m. MonadEffect m => Ord a => SvgTree.Modes -> SvgTree.Config a -> H.Component query (Input a) output m
+component :: forall a query output m. MonadEffect m => SvgTree.Modes -> SvgTree.Config a -> H.Component query (Input a) output m
 component modes config = component' modes config Nothing
 
 
-component_ :: forall a query output m. MonadEffect m => Ord a => SvgTree.Modes -> SvgTree.Config a -> NodeComponent m a -> H.Component query (Input a) output m
+component_ :: forall a query output m. MonadEffect m => SvgTree.Modes -> SvgTree.Config a -> NodeComponent m a -> H.Component query (Input a) output m
 component_ modes config childComp = component' modes config (Just childComp)
 
 
-component' :: forall a query output m. MonadEffect m => Ord a => SvgTree.Modes -> SvgTree.Config a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
+component' :: forall a query output m. MonadEffect m => SvgTree.Modes -> SvgTree.Config a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
 component' modes config mbChildComp =
   H.mkComponent
     { initialState
