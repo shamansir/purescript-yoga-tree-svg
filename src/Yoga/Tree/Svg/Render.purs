@@ -261,7 +261,7 @@ renderPreview' nodeMode config mbComponent nodeStatus nodePath value =
             [ HS.rect
                 [ HSA.width  $ previewSize.width
                 , HSA.height $ previewSize.height
-                , HSA.stroke $ HSA.RGB 0 0 0
+                , HSA.stroke $ _strokeFromStatus nodeStatus
                 , HSA.fill $ HSA.RGBA 0 0 0 0.0
                 ]
             , HS.g
@@ -340,7 +340,7 @@ _renderValue NodeWithLabel config _ _ status pos nodePath value =
             , HSA.cy pos.y
             , HSA.r 5.0
             , HSA.fill $ config.valueColor nodePath value
-            , HSA.stroke $ HSA.RGB 0 0 0
+            , HSA.stroke $ _strokeFromStatus status
             ]
         , HS.text
             [ HSA.fill $ config.valueColor nodePath value
@@ -358,7 +358,7 @@ _renderValue JustNode config _ _ status pos nodePath value =
             , HSA.cy pos.y
             , HSA.r 5.0
             , HSA.fill $ config.valueColor nodePath value
-            , HSA.stroke $ HSA.RGB 0 0 0
+            , HSA.stroke $ _strokeFromStatus status
             ]
         ]
 _renderValue Component _ _ Nothing status pos _ _ =
@@ -378,3 +378,9 @@ _renderValue Component _ pslot (Just childComp) status pos nodePath value =
             { path : nodePath
             , value
             }
+          
+
+_strokeFromStatus :: NodeStatus -> HSA.Color           
+_strokeFromStatus = case _ of 
+  Normal -> HSA.RGB 0 0 0
+  _ -> HSA.RGB 255 0 0
