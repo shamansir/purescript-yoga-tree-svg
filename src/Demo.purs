@@ -147,8 +147,8 @@ config =
 modes :: YogaSvgTree.Modes
 modes =
   { nodeMode : YST.NodeWithLabel
-  , previewMode : YST.NodeWithLabel
-  , edgeMode : YST.EdgeWithLabel
+  , previewMode : YST.Component -- YST.NodeWithLabel
+  , edgeMode : YST.JustEdge -- EdgeWithLabel
   }
 
 

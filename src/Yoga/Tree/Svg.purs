@@ -5,8 +5,10 @@ module Yoga.Tree.Svg
 
 import Prelude
 
+import Effect.Class (class MonadEffect)
+
 import Data.Array ((:))
-import Data.Array (take, fromFoldable, dropEnd, length, snoc, last) as Array
+import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse) as Array
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
@@ -17,24 +19,32 @@ import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
+import Halogen.Query.Event (eventListener)
 import Halogen.Svg.Attributes as HSA
 import Halogen.Svg.Elements as HS
-import Web.HTML.Window (history)
-import Web.UIEvent.WheelEvent as Wheel
+
+import Web.HTML (window, HTMLDocument)
+import Web.HTML.HTMLDocument as HTMLDocument
+import Web.HTML.Window (document, history)
+import Web.UIEvent.WheelEvent as WE
+import Web.UIEvent.KeyboardEvent as KE
+import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
 import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value) as Tree
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
-import Yoga.Tree.Extended.Path (find, root, toArray, depth) as Path
 import Yoga.Tree.Extended.Path (Path(..))
+import Yoga.Tree.Extended.Path (find, root, toArray, depth) as Path
 import Yoga.Tree.Svg.Render as SvgTree
 
 -- import Yoga.Tree.Zipper (Path)
 
 
 data Action a
-    = Receive (Input a)
+    = Initialize
+    | Receive (Input a)
     | WheelChange { dx :: Number, dy :: Number }
+    | HandleKey H.SubscriptionId KE.KeyboardEvent
     | FocusOn Path
     | NodeClick Path a
     | NodeOver  Path a
@@ -78,15 +88,15 @@ type State a =
 type NodeComponent m a = SvgTree.NodeComponent m a
 
 
-component :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> H.Component query (Input a) output m
+component :: forall a query output m. MonadEffect m => Ord a => SvgTree.Modes -> SvgTree.Config a -> H.Component query (Input a) output m
 component modes config = component' modes config Nothing
 
 
-component_ :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> NodeComponent m a -> H.Component query (Input a) output m
+component_ :: forall a query output m. MonadEffect m => Ord a => SvgTree.Modes -> SvgTree.Config a -> NodeComponent m a -> H.Component query (Input a) output m
 component_ modes config childComp = component' modes config (Just childComp)
 
 
-component' :: forall a query output m. Ord a => SvgTree.Modes -> SvgTree.Config a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
+component' :: forall a query output m. MonadEffect m => Ord a => SvgTree.Modes -> SvgTree.Config a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
 component' modes config mbChildComp =
   H.mkComponent
     { initialState
@@ -94,6 +104,7 @@ component' modes config mbChildComp =
     , eval: H.mkEval $ H.defaultEval
         { handleAction = handleAction
         , receive = Just <<< Receive
+        , initialize = Just Initialize
         }
     }
   where
@@ -140,8 +151,8 @@ component' modes config mbChildComp =
           [ HSA.width state.size.width
           , HSA.height state.size.height
           , HE.onWheel \wevt -> WheelChange
-              { dx : Wheel.deltaX wevt
-              , dy : Wheel.deltaY wevt
+              { dx : WE.deltaX wevt
+              , dy : WE.deltaY wevt
               }
           ]
           $ pure
@@ -198,7 +209,7 @@ component' modes config mbChildComp =
           [ HP.style $ "position: absolute; right: 0; top: 600px; user-select: none;"
           ]
           $ (HH.div [] <<< pure <<< renderPath SingleGo config state.tree)
-          <$> state.history
+          <$> Array.reverse state.history
 
       ]
 
@@ -226,6 +237,13 @@ component' modes config mbChildComp =
       }
 
   handleAction = case _ of
+    Initialize -> do 
+      document <- H.liftEffect $ document =<< window
+      H.subscribe' \sid -> 
+          eventListener
+            KET.keyup
+            (HTMLDocument.toEventTarget document)
+            (map (HandleKey sid) <<< KE.fromEvent)
     Receive input ->
       H.modify_ $ receive input
     WheelChange { dy } ->
@@ -237,6 +255,8 @@ component' modes config mbChildComp =
             $ state.zoom + (dy * 0.1)
           }
       )
+    HandleKey sid ev ->
+      pure unit
     ResetZoom ->
       H.modify_ _ { zoom = 1.0 }
     FocusOn path ->
