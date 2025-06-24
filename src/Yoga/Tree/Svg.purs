@@ -142,13 +142,24 @@ component' modes config mbChildComp =
       Nothing ->
         HH.text "?"
 
-  statusOf :: Path -> SvgTree.NodeStatus 
-  statusOf path = SvgTree.Normal 
+  statusOf :: State a -> Path -> SvgTree.NodeStatus 
+  statusOf state path = 
+    let 
+        checkFocus = 
+          if state.focus == path 
+            then SvgTree.FocusRoot 
+            else SvgTree.Normal
+    in case state.preview of 
+      Focused previewPath -> 
+        if previewPath == path then SvgTree.HoverFocus else checkFocus
+      LostFocus previewPath ->
+        if previewPath == path then SvgTree.HoverGhost else checkFocus
+      None -> checkFocus
 
-  injectStatuses :: Graph Path a -> Graph Path (WithStatus a)
-  injectStatuses = 
+  injectStatuses :: State a -> Graph Path a -> Graph Path (WithStatus a)
+  injectStatuses state = 
       Graph.toMap 
-      >>> mapWithIndex (\path (a /\ xs) -> (statusOf path /\ a) /\ xs) 
+      >>> mapWithIndex (\path (a /\ xs) -> (statusOf state path /\ a) /\ xs) 
       >>> Graph.fromMap
   
   render :: State a -> _
@@ -173,7 +184,7 @@ component' modes config mbChildComp =
             [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
             $ SvgTree.renderGraph' modes (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
             -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
-            $ injectStatuses
+            $ injectStatuses state
             $ Tree.toGraph' state.focus
             $ fromMaybe state.tree
             $ Path.find state.focus state.tree

@@ -76,10 +76,13 @@ data EdgeMode
 
 data NodeStatus
     = Normal
-    | NavigationFocus 
-    | HoverFocus
-    | HoverGhost
-    | Selected
+    | FocusRoot -- when the node is in the root of current navigation
+    | KeysFocus -- when user focused over the node with keys
+    | KeysNext -- when node is the candidate for being selected next
+    | HoverFocus -- when node is hovered with mouse cursor (preview)
+    | HoverGhost -- when cursor left the node but no other node was hovered over (ghost preview)
+    | Selected -- when node is the part of current selection
+    | Pinned -- when node is pinned
     | Combo NodeStatus NodeStatus
 
 
@@ -250,9 +253,15 @@ renderPreview' nodeMode config mbComponent nodeStatus nodePath value =
     let
         previewSize = config.valueSize nodePath value
         position =
-            { x : previewSize.width / 2.0
-            , y : previewSize.height / 2.0
-            }
+            case nodeMode of 
+              Component -> 
+                { x : 0.0
+                , y : previewSize.height / 2.0 
+                }    
+              _ -> 
+                { x : previewSize.width / 2.0
+                , y : previewSize.height / 2.0
+                }
     in
         HS.svg
             [ HSA.width  $ previewSize.width
@@ -383,4 +392,7 @@ _renderValue Component _ pslot (Just childComp) status pos nodePath value =
 _strokeFromStatus :: NodeStatus -> HSA.Color           
 _strokeFromStatus = case _ of 
   Normal -> HSA.RGB 0 0 0
-  _ -> HSA.RGB 255 0 0
+  FocusRoot -> HSA.RGB 0 70 0
+  HoverFocus -> HSA.RGB 255 0 0
+  HoverGhost -> HSA.RGB 170 0 0
+  _ -> HSA.RGB 0 0 0
