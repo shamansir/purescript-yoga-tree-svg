@@ -130,7 +130,7 @@ component' modes config mbChildComp =
   render :: State a -> _
   render state =
     HH.div
-      [ HP.style "oveflow: hidden;" ]
+      [ HP.style "oveflow: hidden; user-select: none;" ]
 
       {- Graph component -}
       [ HH.div
@@ -155,7 +155,7 @@ component' modes config mbChildComp =
 
       {- Zoom & Size -}
       , HH.div
-        [ HP.style "position: absolute; right: 0; top: 0;" ]
+        [ HP.style "position: absolute; right: 0; top: 0; user-select: none;" ]
         [ _qbutton "Reset zoom" ResetZoom
         , HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom)
         , HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height
@@ -177,11 +177,11 @@ component' modes config mbChildComp =
           $ case state.preview of
               Focused previewPath ->
                 if not $ Set.member previewPath state.pinned then
-                  wrapPinUnpin false state.pinned state.tree previewPath
+                  wrapPinUnpin config false state.pinned state.tree previewPath
                 else HH.text ""
               LostFocus previewPath ->
                 if not $ Set.member previewPath state.pinned then
-                  wrapPinUnpin false state.pinned state.tree previewPath
+                  wrapPinUnpin config false state.pinned state.tree previewPath
                 else HH.text ""
               None ->
                 HH.text ""
@@ -190,30 +190,30 @@ component' modes config mbChildComp =
       , HH.div
           [ HP.style $ "position: absolute; right: 0; top: 200px;"
           ]
-          $ wrapPinUnpin true state.pinned state.tree
+          $ wrapPinUnpin config true state.pinned state.tree
           <$> Array.fromFoldable state.pinned
 
       {- History -}
       , HH.div
-          [ HP.style $ "position: absolute; right: 0; top: 600px;"
+          [ HP.style $ "position: absolute; right: 0; top: 600px; user-select: none;"
           ]
-          $ (HH.div [] <<< pure <<< HH.text <<< show)
+          $ (HH.div [] <<< pure <<< renderPath SingleGo config state.tree)
           <$> state.history
 
       ]
 
-  wrapPinUnpin allowGo pinned tree nodePath =
+  wrapPinUnpin config allowGo pinned tree nodePath =
     HH.div
       []
       [ if not $ Set.member nodePath pinned then
           _qbutton "Pin" $ Pin nodePath
         else
           _qbutton "Unpin" $ UnPin nodePath
-      , HH.text $ show nodePath
       , if allowGo then
-          _qbutton "Go" $ FocusOn nodePath
-        else HH.text ""
-      ,   previewAt tree nodePath
+          renderPath SingleGo config tree nodePath
+        else
+          renderPath ReadOnly config tree nodePath
+      , previewAt tree nodePath
       ]
 
   updateFocus newPath s =
@@ -275,8 +275,8 @@ _qbutton' style label action =
       [ HH.text label ]
 
 
-_buttonStyle   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid black; font-family: sans-serif; font-size: 11px;" :: String
-_pathStepStyle = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid blue;  font-family: sans-serif; font-size: 11px;" :: String 
+_buttonStyle   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid black; font-family: sans-serif; font-size: 11px; user-select: none;" :: String
+_pathStepStyle = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid blue;  font-family: sans-serif; font-size: 11px; user-select: none;" :: String 
   
 
 _pathStepButtonRaw :: forall p a. String -> Maybe (Action a) -> HH.HTML p (Action a)
@@ -288,19 +288,6 @@ _pathStepButtonRaw label = case _ of
         [ HH.text label ]
 
 
-_pathStepLabel :: forall a. (Path -> a -> String) -> Path -> Tree a -> Int -> Int -> String
-_pathStepLabel toLabel fullPath tree pStepIndex pStepValue = 
-  let
-      curPath = Path.toArray fullPath # Array.take pStepIndex # Path 
-      mbValueAt = tree # Path.find curPath <#> Tree.value
-      pathDepth = Path.depth curPath
-  in 
-      if pathDepth == 0 then 
-          maybe "*" (\val -> toLabel Path.root val <> " [*]") mbValueAt
-      else 
-          maybe (show pStepValue) (\val -> toLabel curPath val <> " [" <> show pStepValue <> "]") mbValueAt
-
-
 _pathRootButton :: forall a p. (Path -> a -> String) -> Tree a -> HH.HTML p (Action a)
 _pathRootButton toLabel tree =
     let
@@ -309,16 +296,18 @@ _pathRootButton toLabel tree =
     in _pathStepButtonRaw buttonLabel $ Just $ FocusOn Path.root
 
 
-_pathStepButton :: forall a p. (Path -> a -> String) -> Tree a -> Path -> Int -> Int -> HH.HTML p (Action a)
-_pathStepButton toLabel tree fullPath pIndex pValue =
+_pathStepButton :: forall a p. Boolean -> (Path -> a -> String) -> Tree a -> Path -> Int -> Int -> HH.HTML p (Action a)
+_pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
+    -- pStepIndexis the index of the depth layer. 
+    -- pValueAtDepth is the position of the node at this level of depth 
     let
       pathDepth = Path.depth fullPath
-      isLast = pIndex == (pathDepth - 1)
-      curPath = Path $ Array.take (pIndex + 1) $ Path.toArray fullPath  --Array.dropEnd (max 0 $ pathLen - pIndex - 1) fullPath
+      isLast = pStepIndex == (pathDepth - 1)
+      curPath = Path $ Array.take (pStepIndex + 1) $ Path.toArray fullPath  --Array.dropEnd (max 0 $ pathLen - pIndex - 1) fullPath
       mbValueAt = tree # Path.find curPath <#> Tree.value
-      buttonLabel = maybe (show pValue) (\val -> toLabel curPath val <> " [" <> show pValue <> "]") mbValueAt
+      buttonLabel = maybe (show pValueAtDepth) (\val -> toLabel curPath val <> " [" <> show pValueAtDepth <> "]") mbValueAt
     in
-    if not isLast
+    if not isReadOnly && not isLast
       then _pathStepButtonRaw buttonLabel $ Just $ FocusOn curPath
       else _pathStepButtonRaw buttonLabel Nothing
       
@@ -331,11 +320,12 @@ renderPath Breadcrumbs config tree path =
       HH.div
         []
         $ _pathRootButton config.valueLabel tree
-        : mapWithIndex (_pathStepButton config.valueLabel tree path) pathArr
+        : mapWithIndex (_pathStepButton false config.valueLabel tree path) pathArr
 renderPath ReadOnly config tree path =
   HH.div 
     [] 
-    []
+    $ _pathRootButton config.valueLabel tree
+    : mapWithIndex (_pathStepButton true config.valueLabel tree path) (Path.toArray path)
 renderPath SingleGo config tree path =
   HH.div  
     []
