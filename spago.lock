@@ -13,6 +13,7 @@
             "halogen",
             "halogen-svg-elems",
             "prelude",
+            "tailrec",
             "yoga-tree",
             "yoga-tree-utils"
           ],

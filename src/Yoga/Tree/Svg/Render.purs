@@ -161,6 +161,7 @@ type Modes =
     { nodeMode :: NodeMode
     , edgeMode :: EdgeMode
     , previewMode :: NodeMode
+    -- TODO maximum amount of childNodes
     }
 
 

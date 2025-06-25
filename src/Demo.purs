@@ -4,6 +4,8 @@ import Prelude
 
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Int as Int
+import Data.Array (replicate) as Array
+import Data.FunctorWithIndex (mapWithIndex)
 
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
@@ -26,7 +28,8 @@ import Yoga.Tree (Tree)
 -- import Yoga.Tree as Tree
 import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended as Tree
-import Yoga.Tree.Svg (NodeComponent, component_) as YogaSvgTree
+import Yoga.Tree.Svg (class IsSvgTreeItem)
+import Yoga.Tree.Svg (NodeComponent, component_, toText) as YogaSvgTree
 import Yoga.Tree.Svg.Render (Modes, Config) as YogaSvgTree
 import Yoga.Tree.Svg.Render (NodeMode(..), EdgeMode(..)) as YST
 
@@ -129,8 +132,8 @@ myTree =
 
 simpleTree :: Tree IntItem
 simpleTree =
-  ii 1 :<~ 
-    (ii <$> 
+  ii 1 :<~
+    (ii <$>
       [ 11
       , 12
       , 13
@@ -140,18 +143,27 @@ simpleTree =
     )
 
 
-class Show a <= DemoItem a 
+manyItems :: Tree IntItem
+manyItems =
+  ii 1 :<
+    [ ii 500 :<~ (ii <$> (mapWithIndex const $ Array.replicate 500 unit))
+    , ii 200 :<~ (ii <$> (mapWithIndex const $ Array.replicate 200 unit))
+    , ii 25  :<~ (ii <$> (mapWithIndex const $ Array.replicate  25 unit))
+    , ii 30  :<~ (ii <$> (mapWithIndex const $ Array.replicate  30 unit))
+    , ii 100 :<~ (ii <$> (mapWithIndex const $ Array.replicate 100 unit))
+    ]
 
 
 derive newtype instance Show IntItem
-instance DemoItem IntItem
+instance IsSvgTreeItem IntItem where
+  toText = show
 
 
-config :: forall a. DemoItem a => YogaSvgTree.Config a
+config :: forall a. IsSvgTreeItem a => YogaSvgTree.Config a
 config =
   { edgeColor : \_ _ _ _ -> HSA.RGB 0 0 0
   , edgeLabel : \_ _ _ _ -> "E"
-  , valueLabel : const show
+  , valueLabel : const YogaSvgTree.toText
   , valueColor : const $ const $ HSA.RGB 200 200 200
   , valueSize  : const $ const { width : 200.0, height : 25.0 }
   }
@@ -165,7 +177,7 @@ modes =
   }
 
 
-component ∷ ∀ a query input output m. MonadEffect m => DemoItem a => Tree a -> H.Component query input output m
+component ∷ ∀ a query input output m. MonadEffect m => IsSvgTreeItem a => Tree a -> H.Component query input output m
 component startFromTree =
   H.mkComponent
     { initialState
@@ -194,9 +206,12 @@ component startFromTree =
   child :: YogaSvgTree.NodeComponent m a
   child = H.mkComponent
     { initialState : identity
-    , render : show >>> HH.text >>> pure >>> HS.text [ HSA.fill $ HSA.RGB 0 0 0 ]
+    , render : childString >>> HH.text >>> pure >>> HS.text [ HSA.fill $ HSA.RGB 0 0 0 ]
     , eval: H.mkEval $ H.defaultEval { handleAction = const $ pure unit }
     }
+
+  childString { path, value } =
+    show path <> " // " <> YogaSvgTree.toText value
 
   handleAction = case _ of
     Initialize -> do

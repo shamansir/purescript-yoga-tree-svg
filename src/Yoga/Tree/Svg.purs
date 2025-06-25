@@ -1,9 +1,13 @@
 module Yoga.Tree.Svg
   ( NodeComponent
   , component, component_
+  , class IsSvgTreeItem, toText
   ) where
 
 import Prelude
+
+import Effect.Class (class MonadEffect)
+import Effect.Console (log) as Console
 
 import Data.Array ((:))
 import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse) as Array
@@ -15,8 +19,7 @@ import Data.Set (Set)
 import Data.Set (empty, insert, delete, isEmpty, member) as Set
 import Data.String (take, toLower) as String
 import Data.Tuple.Nested ((/\))
-import Effect.Class (class MonadEffect)
-import Effect.Console (log) as Console
+
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
@@ -24,12 +27,14 @@ import Halogen.HTML.Properties as HP
 import Halogen.Query.Event (eventListener)
 import Halogen.Svg.Attributes as HSA
 import Halogen.Svg.Elements as HS
+
 import Web.HTML (window, HTMLDocument)
 import Web.HTML.HTMLDocument as HTMLDocument
 import Web.HTML.Window (document, history)
 import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
 import Web.UIEvent.WheelEvent as WE
+
 import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value, children) as Tree
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
@@ -37,7 +42,7 @@ import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path (find, root, toArray, depth, advance, safeAdvance, Dir(..), advanceDir, isNextFor) as Path
 import Yoga.Tree.Svg.Render (WithStatus)
 import Yoga.Tree.Svg.Render as SvgTree
-
+import Yoga.Tree.TempConvert as TreeConv
 -- import Yoga.Tree.Zipper (Path)
 
 
@@ -90,15 +95,19 @@ type State a =
 type NodeComponent m a = SvgTree.NodeComponent m a
 
 
-component :: forall a query output m. MonadEffect m => SvgTree.Modes -> SvgTree.Config a -> H.Component query (Input a) output m
+class IsSvgTreeItem a where
+  toText :: a -> String
+
+
+component :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.Config a -> H.Component query (Input a) output m
 component modes config = component' modes config Nothing
 
 
-component_ :: forall a query output m. MonadEffect m => SvgTree.Modes -> SvgTree.Config a -> NodeComponent m a -> H.Component query (Input a) output m
+component_ :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.Config a -> NodeComponent m a -> H.Component query (Input a) output m
 component_ modes config childComp = component' modes config (Just childComp)
 
 
-component' :: forall a query output m. MonadEffect m => SvgTree.Modes -> SvgTree.Config a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
+component' :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.Config a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
 component' modes config mbChildComp =
   H.mkComponent
     { initialState
@@ -245,7 +254,7 @@ component' modes config mbChildComp =
       , HH.div
           -- [ HP.style "position: absolute; right: 0; top: 20px;" ]
           [ HP.style $ case state.selection of
-            Just _ -> "position: absolute; left: 0; top: 200px;"
+            Just _  -> "position: absolute; left: 0; top: 200px;"
             Nothing -> "position: absolute; left: 0; top: 120px;"
           ]
           [ HH.text "Location: "
@@ -294,6 +303,18 @@ component' modes config mbChildComp =
           ]
           $ (HH.div [] <<< pure <<< renderPath SingleGo config state.tree)
           <$> Array.reverse state.history
+
+      {- String Rep -}
+
+      , HH.div
+          [ HP.style $ "position: absolute; right: 200px; bottom: 200px; user-select: none;"
+          ]
+          [ HH.textarea
+            [ HP.value $ TreeConv.toString toText state.tree
+            , HP.rows 50
+            , HP.cols 50
+            ]
+          ]
 
       ]
 
