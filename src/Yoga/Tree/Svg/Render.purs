@@ -223,13 +223,13 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
                 ]
                 $ case (statusOf nodePath) of
                     KeysNext ->
-                        [ HS.text
+                        [ _renderValue modes.nodeMode config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                        , HS.text
                             []
-                            [ case Path.lastPos nodePath of
+                            [ case Path.lastPos nodePath of -- TODO: pass index of the item instead
                                 Just lastVal -> HH.text $ show lastVal
                                 Nothing -> HH.text "?"
                             ]
-                        , _renderValue modes.nodeMode config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
                         ]
                     _ -> pure $ _renderValue modes.nodeMode config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
         renderEdge parentPath parent childPath =

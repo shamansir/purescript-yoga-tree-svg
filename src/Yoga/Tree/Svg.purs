@@ -389,8 +389,12 @@ component' modes config mbChildComp =
             H.put $ s { selection = Just $ Path.safeAdvance selPath num s.tree }
           else pure unit
       _whenJust (_isArrowKey key) $ \dir ->
-          H.put $ s { selection = Just $ Path.advanceDir selPath dir s.tree }
-
+          let nextPath = Path.advanceDir selPath dir s.tree
+          in
+            if dir == Path.Up && selPath == s.focus then
+              H.put $ updateFocus nextPath $ s { selection = Just nextPath }
+            else
+              H.put $ s { selection = Just nextPath }
 
 _whenJust :: forall a m. Applicative m => Maybe a -> (a -> m Unit) -> m Unit
 _whenJust maybe f =
