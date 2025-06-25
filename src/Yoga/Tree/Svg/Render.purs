@@ -32,6 +32,7 @@ import Data.Tuple.Nested ((/\), type (/\))
 import Data.Bifunctor (lmap)
 
 import Yoga.Tree.Extended.Path (Path)
+import Yoga.Tree.Extended.Path (lastPos) as Path
 
 import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale)
 
@@ -220,8 +221,17 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
                 , HE.onMouseOver $ const $ events.valueOver  nodePath value
                 , HE.onMouseOut  $ const $ events.valueOut   nodePath value
                 ]
-                $ pure
-                $ _renderValue modes.nodeMode config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                $ case (statusOf nodePath) of
+                    KeysNext ->
+                        [ HS.text
+                            []
+                            [ case Path.lastPos nodePath of
+                                Just lastVal -> HH.text $ show lastVal
+                                Nothing -> HH.text "?"
+                            ]
+                        , _renderValue modes.nodeMode config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                        ]
+                    _ -> pure $ _renderValue modes.nodeMode config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->

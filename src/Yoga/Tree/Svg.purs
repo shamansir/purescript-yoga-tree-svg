@@ -168,7 +168,7 @@ component' modes config mbChildComp =
               if selPath == path
                 then SvgTree.Selected
                 else
-                  if Path.isNextFor selPath path
+                  if Path.isNextFor path selPath
                   then SvgTree.KeysNext
                   else checkPreview
             Nothing ->
