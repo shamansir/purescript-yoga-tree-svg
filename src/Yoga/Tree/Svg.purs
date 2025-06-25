@@ -34,7 +34,7 @@ import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value, children) as Tree
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Extended.Path (Path(..))
-import Yoga.Tree.Extended.Path (find, root, toArray, depth, advance) as Path
+import Yoga.Tree.Extended.Path (find, root, toArray, depth, advance, safeAdvance, Dir(..), advanceDir, isNextFor) as Path
 import Yoga.Tree.Svg.Render (WithStatus)
 import Yoga.Tree.Svg.Render as SvgTree
 
@@ -126,8 +126,8 @@ component' modes config mbChildComp =
     , zoom : 1.0
     , size
     , preview : None
-    , pinned : Set.empty 
-    , selection : Nothing 
+    , pinned : Set.empty
+    , selection : Nothing
     }
 
   receive :: Input a -> State a -> State a
@@ -148,34 +148,39 @@ component' modes config mbChildComp =
       Nothing ->
         HH.text "?"
 
-  statusOf :: State a -> Path -> SvgTree.NodeStatus 
-  statusOf state path = 
-    let 
-        checkFocus = 
-          if state.focus == path 
-            then SvgTree.FocusRoot 
+  statusOf :: State a -> Path -> SvgTree.NodeStatus
+  statusOf state path =
+    let
+        checkFocus =
+          if state.focus == path
+            then SvgTree.FocusRoot
             else SvgTree.Normal
         checkPreview =
-          case state.preview of 
-            Focused previewPath -> 
+          case state.preview of
+            Focused previewPath ->
                if previewPath == path then SvgTree.HoverFocus else checkFocus
             LostFocus previewPath ->
                if previewPath == path then SvgTree.HoverGhost else checkFocus
             None -> checkFocus
         checkSelection =
-          case state.selection of 
+          case state.selection of
             Just selPath ->
-              if selPath == path then SvgTree.Selected else checkPreview -- TODO: if Path.startsWith selPath path then NextLevel // if Path.nextFor selPath path NextLevel
+              if selPath == path
+                then SvgTree.Selected
+                else
+                  if Path.isNextFor selPath path
+                  then SvgTree.KeysNext
+                  else checkPreview
             Nothing ->
               checkPreview
     in checkSelection
 
   injectStatuses :: State a -> Graph Path a -> Graph Path (WithStatus a)
-  injectStatuses state = 
-      Graph.toMap 
-      >>> mapWithIndex (\path (a /\ xs) -> (statusOf state path /\ a) /\ xs) 
+  injectStatuses state =
+      Graph.toMap
+      >>> mapWithIndex (\path (a /\ xs) -> (statusOf state path /\ a) /\ xs)
       >>> Graph.fromMap
-  
+
   render :: State a -> _
   render state =
     HH.div
@@ -213,7 +218,7 @@ component' modes config mbChildComp =
 
       {- Keyboard info -}
 
-      , HH.div 
+      , HH.div
         []
         $ HH.span [ HP.style _infoBlStyle ] <$> pure <$>
           (
@@ -221,17 +226,17 @@ component' modes config mbChildComp =
           , HH.text "\"-\" to slightly zoom out"
           , HH.text "\"=\" to reset zoom"
           ]
-          <> 
-          case state.selection of 
-            Just _ -> 
+          <>
+          case state.selection of
+            Just _ ->
                 [ HH.text "<Escape> to cancel selection"
                 , HH.text "<number> to select move to a next child"
                 , HH.text "arrows to navigate tree up/down/right/left"
                 , HH.text "<Enter> to navigate to selected node"
                 , HH.text "<Space> to pin selected node"
                 ]
-            Nothing -> 
-                [ HH.text "<Space> to start navigating with keyboard" 
+            Nothing ->
+                [ HH.text "<Space> to start navigating with keyboard"
                 , if Path.depth state.focus > 0 then HH.text "\"*\" or <Tab> to return to the root" else HH.text ""
                 ]
           )
@@ -239,20 +244,20 @@ component' modes config mbChildComp =
       {- Path Breadcrumbs -}
       , HH.div
           -- [ HP.style "position: absolute; right: 0; top: 20px;" ]
-          [ HP.style $ case state.selection of 
+          [ HP.style $ case state.selection of
             Just _ -> "position: absolute; left: 0; top: 200px;"
             Nothing -> "position: absolute; left: 0; top: 120px;"
           ]
           [ HH.text "Location: "
-          , renderPath Breadcrumbs config state.tree state.focus 
-          , case state.selection of 
-              Just selPath -> 
-                HH.div 
-                  [] 
-                  [ HH.text "Selection:" 
-                  , renderPath Breadcrumbs config state.tree selPath  
+          , renderPath Breadcrumbs config state.tree state.focus
+          , case state.selection of
+              Just selPath ->
+                HH.div
+                  []
+                  [ HH.text "Selection:"
+                  , renderPath Breadcrumbs config state.tree selPath
                   ]
-              Nothing -> 
+              Nothing ->
                 HH.text ""
           ]
 
@@ -316,9 +321,9 @@ component' modes config mbChildComp =
       }
 
   handleAction = case _ of
-    Initialize -> do 
+    Initialize -> do
       document <- H.liftEffect $ document =<< window
-      H.subscribe' \sid -> 
+      H.subscribe' \sid ->
           eventListener
             KET.keyup
             (HTMLDocument.toEventTarget document)
@@ -335,7 +340,7 @@ component' modes config mbChildComp =
           }
       )
     HandleKey sid evt -> do
-      H.liftEffect $ Console.log $ "key:" <> KE.key evt 
+      H.liftEffect $ Console.log $ "key:" <> KE.key evt
       H.liftEffect $ Console.log $ "code:" <> KE.code evt
       handleKey $ KE.key evt
     ResetZoom ->
@@ -356,54 +361,46 @@ component' modes config mbChildComp =
   handleKey key | key == "+" = H.modify_ \s -> s { zoom = s.zoom + 0.1 }
   handleKey key | key == "-" = H.modify_ \s -> s { zoom = s.zoom - 0.1 }
   handleKey key | key == "=" = H.modify_ _ { zoom = 1.0 }
-  handleKey key | key == " " = 
-      H.modify_ \s -> 
-        case s.selection of 
-            Just path -> 
+  handleKey key | key == " " =
+      H.modify_ \s ->
+        case s.selection of
+            Just path ->
               s { pinned = s.pinned # Set.insert path }
-            Nothing -> 
+            Nothing ->
               s { selection = Just s.focus }
   handleKey key | key == "*" = H.modify_ $ updateFocus Path.root
   handleKey key | String.toLower key == "tab" = H.modify_ $ updateFocus Path.root
-  handleKey key | String.toLower key == "escape" = 
+  handleKey key | String.toLower key == "escape" =
       H.modify_ \s -> s { selection = Nothing }
-  handleKey key | String.toLower key == "enter" = do 
-      s <- H.get 
-      H.put $ case s.selection of 
-              Just path -> 
+  handleKey key | String.toLower key == "enter" = do
+      s <- H.get
+      H.put $ case s.selection of
+              Just path ->
                 updateFocus path $ s { selection = Nothing }
               Nothing -> s
   -- TODO backspace : go to second last in the history
   -- TODO `up` in normal mode: move focus up
-  handleKey key = do 
-    s <- H.get 
+  handleKey key = do
+    s <- H.get
     _whenJust s.selection \selPath -> do
-      _whenJust (_isNumberKey key) \num -> 
-        _whenJust (Path.find selPath s.tree) \subTree -> 
-          if num < Array.length (Tree.children subTree) then 
-            H.put $ s { selection = Just (selPath # Path.advance num) } -- TODO:Path.safeAdvance selPath num tree
+      _whenJust (_isNumberKey key) \num ->
+        _whenJust (Path.find selPath s.tree) \subTree ->
+          if num < Array.length (Tree.children subTree) then
+            H.put $ s { selection = Just $ Path.safeAdvance selPath num s.tree }
           else pure unit
-      _whenJust (_isArrowKey key) $ case _ of -- TODO Path.advanceDir selPath dir tree 
-          Up -> pure unit
-          Down -> pure unit
-          Right -> pure unit
-          Left -> pure unit
-        
+      _whenJust (_isArrowKey key) $ \dir ->
+          H.put $ s { selection = Just $ Path.advanceDir selPath dir s.tree }
+
 
 _whenJust :: forall a m. Applicative m => Maybe a -> (a -> m Unit) -> m Unit
 _whenJust maybe f =
-    case maybe of 
-        Just v -> f v  
+    case maybe of
+        Just v -> f v
         Nothing -> pure unit
 
-data Dir 
-  = Up 
-  | Down 
-  | Right 
-  | Left
 
 _isNumberKey :: String -> Maybe Int
-_isNumberKey = case _ of 
+_isNumberKey = case _ of
     "0" -> Just 0
     "1" -> Just 1
     "2" -> Just 2
@@ -417,17 +414,17 @@ _isNumberKey = case _ of
     _   -> Nothing
 
 
-_isArrowKey :: String -> Maybe Dir 
-_isArrowKey = case _ of 
-    "ArrowUp" -> Just Up
-    "ArrowDown" -> Just Down
-    "ArrowRight" -> Just Right
-    "ArrowLeft" -> Just Left
+_isArrowKey :: String -> Maybe Path.Dir
+_isArrowKey = case _ of
+    "ArrowUp"    -> Just Path.Up
+    "ArrowDown"  -> Just Path.Down
+    "ArrowRight" -> Just Path.Right
+    "ArrowLeft"  -> Just Path.Left
     _ -> Nothing
 
 
 _qbutton :: forall p action. String -> action -> HH.HTML p action
-_qbutton = _qbutton' _buttonStyle   
+_qbutton = _qbutton' _buttonStyle
 
 _qbutton' :: forall p action. String -> String -> action -> HH.HTML p action
 _qbutton' style label action =
@@ -439,15 +436,15 @@ _qbutton' style label action =
 
 
 _buttonStyle   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid black; font-family: sans-serif; font-size: 11px; user-select: none;" :: String
-_pathStepStyle = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid blue;  font-family: sans-serif; font-size: 11px; user-select: none;" :: String 
-_infoStyle     = "padding: 2px 5px;" :: String 
-_infoBlStyle   = "padding: 2px 5px; display: block;" :: String 
+_pathStepStyle = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid blue;  font-family: sans-serif; font-size: 11px; user-select: none;" :: String
+_infoStyle     = "padding: 2px 5px;" :: String
+_infoBlStyle   = "padding: 2px 5px; display: block;" :: String
 
 
 _pathStepButtonRaw :: forall p a. String -> Maybe (Action a) -> HH.HTML p (Action a)
-_pathStepButtonRaw label = case _ of 
+_pathStepButtonRaw label = case _ of
     Just action -> _qbutton' _pathStepStyle label action
-    Nothing -> 
+    Nothing ->
       HH.span
         [ HP.style _pathStepStyle ]
         [ HH.text label ]
@@ -463,8 +460,8 @@ _pathRootButton toLabel tree =
 
 _pathStepButton :: forall a p. Boolean -> (Path -> a -> String) -> Tree a -> Path -> Int -> Int -> HH.HTML p (Action a)
 _pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
-    -- pStepIndexis the index of the depth layer. 
-    -- pValueAtDepth is the position of the node at this level of depth 
+    -- pStepIndexis the index of the depth layer.
+    -- pValueAtDepth is the position of the node at this level of depth
     let
       pathDepth = Path.depth fullPath
       isLast = pStepIndex == (pathDepth - 1)
@@ -475,12 +472,12 @@ _pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
     if not isReadOnly && not isLast
       then _pathStepButtonRaw buttonLabel $ Just $ FocusOn curPath
       else _pathStepButtonRaw buttonLabel Nothing
-      
+
 
 renderPath :: forall p a. PathMode -> SvgTree.Config a -> Tree a -> Path -> HH.HTML p (Action a)
 renderPath Breadcrumbs config tree path =
   case Path.toArray path of
-    [] -> 
+    [] ->
       HH.div [] [ _pathStepButtonRaw "*" Nothing ]
     pathArr ->
       HH.div
@@ -488,13 +485,13 @@ renderPath Breadcrumbs config tree path =
         $ _pathRootButton config.valueLabel tree
         : mapWithIndex (_pathStepButton false config.valueLabel tree path) pathArr
 renderPath ReadOnly config tree path =
-  HH.div 
-    [] 
+  HH.div
+    []
     $ _pathRootButton config.valueLabel tree
     : mapWithIndex (_pathStepButton true config.valueLabel tree path) (Path.toArray path)
 renderPath SingleGo config tree path =
-  HH.div  
+  HH.div
     []
     [ renderPath ReadOnly config tree path
-    , _qbutton "Go" $ FocusOn path 
+    , _qbutton "Go" $ FocusOn path
     ]

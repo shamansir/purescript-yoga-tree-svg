@@ -184,7 +184,7 @@ type GraphHtml m i  = HTML (H.ComponentSlot Slots m i) i
 
 
 type WithStatus a = NodeStatus /\ a
-  
+
 
 _statusOf :: forall a. WithStatus a -> NodeStatus
 _statusOf = Tuple.fst
@@ -205,8 +205,8 @@ renderGraph_ modes geom config childComp = renderGraph' modes geom config (Just 
 renderGraph' :: forall a i m. Modes -> Geometry -> Config a -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
 renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
-        statusOf :: Path -> NodeStatus 
-        statusOf path = Graph.lookup path graph <#> _statusOf # fromMaybe Normal 
+        statusOf :: Path -> NodeStatus
+        statusOf path = Graph.lookup path graph <#> _statusOf # fromMaybe Normal
         valuesGraph :: Graph Path a
         valuesGraph = graph <#> _valueOf
         positionsMap :: PositionedGraphMap a
@@ -253,12 +253,12 @@ renderPreview' nodeMode config mbComponent nodeStatus nodePath value =
     let
         previewSize = config.valueSize nodePath value
         position =
-            case nodeMode of 
-              Component -> 
+            case nodeMode of
+              Component ->
                 { x : 0.0
-                , y : previewSize.height / 2.0 
-                }    
-              _ -> 
+                , y : previewSize.height / 2.0
+                }
+              _ ->
                 { x : previewSize.width / 2.0
                 , y : previewSize.height / 2.0
                 }
@@ -356,7 +356,7 @@ _renderValue NodeWithLabel config _ _ status pos nodePath value =
             , HSA.x $ pos.x + 6.0
             , HSA.y $ pos.y + 9.0
             ]
-            [ HH.text $ config.valueLabel nodePath value 
+            [ HH.text $ config.valueLabel nodePath value
             ]
         ]
 _renderValue JustNode config _ _ status pos nodePath value =
@@ -387,13 +387,14 @@ _renderValue Component _ pslot (Just childComp) status pos nodePath value =
             { path : nodePath
             , value
             }
-          
 
-_strokeFromStatus :: NodeStatus -> HSA.Color           
-_strokeFromStatus = case _ of 
+
+_strokeFromStatus :: NodeStatus -> HSA.Color
+_strokeFromStatus = case _ of
   Normal -> HSA.RGB 0 0 0
   FocusRoot -> HSA.RGB 0 70 0
   HoverFocus -> HSA.RGB 255 0 0
   HoverGhost -> HSA.RGB 170 0 0
   Selected -> HSA.RGB 0 0 255
+  KeysNext -> HSA.RGB 0 255 0
   _ -> HSA.RGB 0 0 0

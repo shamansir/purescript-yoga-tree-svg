@@ -22,4 +22,4 @@ workspace:
   extraPackages:
     yoga-tree-utils:
       git: https://github.com/shamansir/purescript-yoga-tree-utils.git
-      ref: df635534d0395aa18c13c589ad9fa95c90f5dd88
+      ref: 35d95cca16c4e91757442e79c6048b01d8a17d4a
