@@ -1,6 +1,7 @@
 module Yoga.Tree.Svg
-  ( NodeComponent
+  ( NodeComponent, Element(..)
   , component, component_
+  , allElements
   ) where
 
 import Prelude
@@ -15,7 +16,7 @@ import Data.Graph (Graph)
 import Data.Graph (fromMap, toMap) as Graph
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
-import Data.Set (empty, insert, delete, isEmpty, member) as Set
+import Data.Set (empty, insert, delete, isEmpty, member, fromFoldable) as Set
 import Data.String (take, toLower) as String
 import Data.Tuple.Nested ((/\))
 
@@ -72,9 +73,28 @@ data PathMode
     | SingleGo
 
 
+data Element
+    = Preview
+    | History
+    | Pinned
+    | TextEdit
+    | JsonOutput
+    | Hints
+    | ZoomControls
+
+
+derive instance Eq Element
+derive instance Ord Element
+
+
+allElements :: Set Element
+allElements = Set.fromFoldable [ Preview, History, Pinned, TextEdit, JsonOutput, Hints, ZoomControls ]
+
+
 type Input a =
     { tree :: Tree a
     , size :: { width :: Number, height :: Number }
+    , elements :: Set Element
     }
 
 
@@ -94,6 +114,7 @@ type State a =
     , size :: { width :: Number, height :: Number }
     , selection :: Maybe Path
     , editingTreeText :: Boolean
+    , elements :: Set Element
     }
 
 
@@ -129,7 +150,7 @@ component' modes config mbChildComp =
     }
 
   initialState :: Input a -> State a
-  initialState { tree, size } =
+  initialState { tree, size, elements } =
     { tree
     , focus : Path.root
     , history : [ Path.root ]
@@ -139,6 +160,7 @@ component' modes config mbChildComp =
     , pinned : Set.empty
     , selection : Nothing
     , editingTreeText : false
+    , elements
     }
 
   receive :: Input a -> State a -> State a
@@ -220,7 +242,7 @@ component' modes config mbChildComp =
             $ Path.find state.focus state.tree
 
       {- Zoom & Size -}
-      , HH.div
+      , renderIfEnabled ZoomControls $ HH.div
         [ HP.style "position: absolute; right: 0; top: 0; user-select: none;" ]
         [ _qbutton "Reset zoom" ResetZoom
         , HH.span [ HP.style _infoStyle ] [ HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom) ]
@@ -229,7 +251,7 @@ component' modes config mbChildComp =
 
       {- Keyboard info -}
 
-      , HH.div
+      , renderIfEnabled Hints $ HH.div
         []
         $ HH.span [ HP.style _infoBlStyle ] <$> pure <$>
           (
@@ -273,7 +295,7 @@ component' modes config mbChildComp =
           ]
 
       {- Current Preview(s) -}
-      , HH.div
+      , renderIfEnabled Preview $ HH.div
           [ HP.style $ "position: absolute; right: 0; top: 100px; " <> case state.preview of
             Focused _ -> "opacity: 1.0;"
             LostFocus _ -> "opacity: 0.6;"
@@ -293,14 +315,14 @@ component' modes config mbChildComp =
                 HH.text ""
 
       {- Current Pinned -}
-      , HH.div
+      , renderIfEnabled Pinned $ HH.div
           [ HP.style $ "position: absolute; right: 0; top: 200px;"
           ]
           $ wrapPinUnpin config true state.pinned state.tree
           <$> Array.fromFoldable state.pinned
 
       {- History -}
-      , HH.div
+      , renderIfEnabled History $ HH.div
           [ HP.style $ "position: absolute; right: 0; top: 600px; user-select: none;"
           ]
           $ (HH.div [] <<< pure <<< renderPath SingleGo config state.tree)
@@ -308,7 +330,7 @@ component' modes config mbChildComp =
 
       {- String Rep -}
 
-      , HH.div
+      , renderIfEnabled TextEdit $ HH.div
           [ HP.style $ "position: absolute; right: 200px; bottom: 200px; user-select: none;"
           ]
           [ HH.textarea
@@ -321,7 +343,26 @@ component' modes config mbChildComp =
             ]
           ]
 
+      {- JSON Rep -}
+
+      , renderIfEnabled JsonOutput $ HH.div
+          [ HP.style $ "position: absolute; right: 200px; bottom: 50px; user-select: none;"
+          ]
+          [ HH.textarea
+            [ HP.value $ TreeConv.writeJSON state.tree
+            , HP.readOnly true
+            , HP.rows 10
+            , HP.cols 50
+            ]
+          ]
+
       ]
+    where
+      renderIfEnabled element comp =
+        if Set.member element state.elements then
+          comp
+        else
+          HH.div [] [ ]
 
   wrapPinUnpin config allowGo pinned tree nodePath =
     HH.div
@@ -380,6 +421,7 @@ component' modes config mbChildComp =
         $ Receive
           { size : s.size
           , tree : TreeConv.fromString SvgI.fromText userInput <#> fromMaybe SvgI.default
+          , elements : s.elements
           }
     FocusOn path ->
       H.modify_ $ updateFocus path

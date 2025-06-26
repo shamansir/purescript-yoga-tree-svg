@@ -2,6 +2,8 @@ module Demo where
 
 import Prelude
 
+import Foreign (F)
+
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Int as Int
 import Data.Array (replicate) as Array
@@ -28,10 +30,11 @@ import Yoga.Tree (Tree)
 -- import Yoga.Tree as Tree
 import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended as Tree
-import Yoga.Tree.Svg (NodeComponent, component_) as YST
+import Yoga.Tree.Svg (NodeComponent, component_, allElements) as YST
 import Yoga.Tree.Svg.Render (Modes, Config, NodeMode(..), EdgeMode(..)) as YST
 import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
 import Yoga.Tree.Svg.SvgItem (toText) as YSTI
+import Yoga.JSON (class WriteForeign, class ReadForeign, readImpl, writeImpl)
 
 import Web.Event.Event as E
 import Web.HTML (window) as Web
@@ -41,10 +44,14 @@ import Web.HTML.Window (toEventTarget, innerWidth, innerHeight) as Window
 -- import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
 
+demoTree :: Tree IntItem
+demoTree = myTree
+
+
 main :: Effect Unit
 main = HA.runHalogenAff do
   body <- HA.awaitBody
-  runUI (component myTree) unit body
+  runUI (component demoTree) unit body
 
 
 type Slots =
@@ -161,6 +168,12 @@ instance IsSvgTreeItem IntItem where
   default = IntItem $ -1
 
 
+instance WriteForeign IntItem where
+  writeImpl (IntItem int) = writeImpl int
+instance ReadForeign IntItem where
+  readImpl f = (readImpl f :: F Int) <#> IntItem
+
+
 config :: forall a. IsSvgTreeItem a => YST.Config a
 config =
   { edgeColor : \_ _ _ _ -> HSA.RGB 0 0 0
@@ -203,6 +216,7 @@ component startFromTree =
       (YST.component_ modes config child)
       { tree : state.tree
       , size : reduceSize $ fromMaybe defaultSize state.window
+      , elements : YST.allElements
       }
 
   child :: YST.NodeComponent m a
