@@ -32,6 +32,7 @@ import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended as Tree
 import Yoga.Tree.Svg (NodeComponent, component_, allElements) as YST
 import Yoga.Tree.Svg.Render (Modes, Config, NodeMode(..), EdgeMode(..)) as YST
+import Yoga.Tree.Svg.Style (Mode(..)) as YST
 import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
 import Yoga.Tree.Svg.SvgItem (toText) as YSTI
 import Yoga.JSON (class WriteForeign, class ReadForeign, readImpl, writeImpl)
@@ -217,6 +218,7 @@ component startFromTree =
       { tree : state.tree
       , size : reduceSize $ fromMaybe defaultSize state.window
       , elements : YST.allElements
+      , mode : YST.Light
       }
 
   child :: YST.NodeComponent m a

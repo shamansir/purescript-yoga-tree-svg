@@ -46,6 +46,7 @@ import Yoga.Tree.Svg.Render (WithStatus)
 import Yoga.Tree.Svg.Render as SvgTree
 import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
 import Yoga.Tree.Svg.SvgItem (toText, fromText, default) as SvgI
+import Yoga.Tree.Svg.Style (Mode(..)) as Style
 
 -- import Yoga.Tree.Zipper (Path)
 
@@ -95,6 +96,7 @@ type Input a =
     { tree :: Tree a
     , size :: { width :: Number, height :: Number }
     , elements :: Set Element
+    , mode :: Style.Mode
     }
 
 
@@ -115,6 +117,7 @@ type State a =
     , selection :: Maybe Path
     , editingTreeText :: Boolean
     , elements :: Set Element
+    , mode :: Style.Mode
     }
 
 
@@ -150,7 +153,7 @@ component' modes config mbChildComp =
     }
 
   initialState :: Input a -> State a
-  initialState { tree, size, elements } =
+  initialState { tree, size, elements, mode } =
     { tree
     , focus : Path.root
     , history : [ Path.root ]
@@ -161,6 +164,7 @@ component' modes config mbChildComp =
     , selection : Nothing
     , editingTreeText : false
     , elements
+    , mode
     }
 
   receive :: Input a -> State a -> State a
@@ -422,6 +426,7 @@ component' modes config mbChildComp =
           { size : s.size
           , tree : TreeConv.fromString SvgI.fromText userInput <#> fromMaybe SvgI.default
           , elements : s.elements
+          , mode : s.mode
           }
     FocusOn path ->
       H.modify_ $ updateFocus path

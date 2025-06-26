@@ -2,4 +2,109 @@ module Yoga.Tree.Svg.Style where
 
 import Prelude
 
-foo = 42
+import Halogen.Svg.Attributes (Color(..)) as HSA
+
+
+data Mode
+    = Dark
+    | Light
+
+
+type C = Mode -> HSA.Color
+
+
+background :: C
+background Light = HSA.RGB 255 255 240
+background Dark = HSA.RGB 16 15 15
+
+background2 :: C
+background2 Light = HSA.RGB 242 240 229
+background2 Dark = HSA.RGB 28 27 26
+
+ui :: C
+ui Light =  HSA.RGB 230 228 217
+ui Dark =  HSA.RGB 40 39 38
+
+ui2 :: C
+ui2 Light = HSA.RGB 218 216 206
+ui2 Dark = HSA.RGB 52 51 49
+
+ui3 :: C
+ui3 Light = HSA.RGB 206 205 195
+ui3 Dark = HSA.RGB 64 62 60
+
+tx3 :: C
+tx3 Light = HSA.RGB 183 181 172
+tx3 Dark = HSA.RGB 87 86 83
+
+tx2 :: C
+tx2 Light = HSA.RGB 111 110 105
+tx2 Dark = HSA.RGB 135 133 128
+
+tx :: C
+tx Light = HSA.RGB 16 15 15
+tx Dark = HSA.RGB 206 205 195
+
+reA :: C
+reA Light = HSA.RGB 209 77 65
+reA Dark = HSA.RGB 175 48 41
+
+reB :: C
+reB Light = HSA.RGB 175 48 41
+reB Dark = HSA.RGB 209 77 65
+
+orA :: C
+orA Light = HSA.RGB 218 112 44
+orA Dark = HSA.RGB 188 82 21
+
+orB :: C
+orB Light = HSA.RGB 188 82 21
+orB Dark = HSA.RGB 218 112 44
+
+yeA :: C
+yeA Light = HSA.RGB 208 162 21
+yeA Dark = HSA.RGB 173 131 1
+
+yeB :: C
+yeB Light = HSA.RGB 173 131 1
+yeB Dark = HSA.RGB 208 162 21
+
+grA :: C
+grA Light = HSA.RGB 135 154 57
+grA Dark = HSA.RGB 102 128 11
+
+grB :: C
+grB Light = HSA.RGB 102 128 11
+grB Dark = HSA.RGB 135 154 57
+
+cyA :: C
+cyA Light = HSA.RGB 58 169 159
+cyA Dark = HSA.RGB 36 131 123
+
+cyB :: C
+cyB Light = HSA.RGB 36 131 123
+cyB Dark = HSA.RGB 58 169 159
+
+blA :: C
+blA Light = HSA.RGB 67 133 190
+blA Dark = HSA.RGB 32 94 166
+
+blB :: C
+blB Light = HSA.RGB 32 94 166
+blB Dark = HSA.RGB 67 133 190
+
+puA :: C
+puA Light = HSA.RGB 139 126 200
+puA Dark = HSA.RGB 94 64 157
+
+puB :: C
+puB Light = HSA.RGB 94 64 157
+puB Dark = HSA.RGB 139 126 200
+
+maA :: C
+maA Light = HSA.RGB 206 93 151
+maA Dark = HSA.RGB 160 47 111
+
+maB :: C
+maB Light = HSA.RGB 160 47 111
+maB Dark = HSA.RGB 206 93 151
