@@ -338,7 +338,8 @@ component' modes config mbChildComp =
           [ HP.style $ Style.textEditBox
           ]
           [ HH.textarea
-            [ HP.value $ TreeConv.toString TreeConv.Indent SvgI.toText state.tree
+            [ HP.style Style.textarea
+            , HP.value $ TreeConv.toString TreeConv.Indent SvgI.toText state.tree
             , HP.rows 50
             , HP.cols 50
             , HE.onValueChange TryParse
@@ -353,7 +354,8 @@ component' modes config mbChildComp =
           [ HP.style $ Style.jsonRepBox
           ]
           [ HH.textarea
-            [ HP.value $ TreeConv.writeJSON state.tree
+            [ HP.style Style.textarea
+            , HP.value $ TreeConv.writeJSON state.tree
             , HP.readOnly true
             , HP.rows 10
             , HP.cols 50
