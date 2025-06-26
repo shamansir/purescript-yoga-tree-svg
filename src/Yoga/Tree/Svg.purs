@@ -46,7 +46,7 @@ import Yoga.Tree.Svg.Render (WithStatus)
 import Yoga.Tree.Svg.Render as SvgTree
 import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
 import Yoga.Tree.Svg.SvgItem (toText, fromText, default) as SvgI
-import Yoga.Tree.Svg.Style (Mode(..)) as Style
+import Yoga.Tree.Svg.Style as Style
 
 -- import Yoga.Tree.Zipper (Path)
 
@@ -221,11 +221,11 @@ component' modes config mbChildComp =
   render :: State a -> _
   render state =
     HH.div
-      [ HP.style "oveflow: hidden; user-select: none;" ]
+      [ HP.style Style.component ]
 
       {- Graph component -}
       [ HH.div
-        [ HP.style "position: absolute; left: 0; top: 0;" ]
+        [ HP.style Style.graph ]
         $ pure
         $ HS.svg
           [ HSA.width state.size.width
@@ -247,17 +247,17 @@ component' modes config mbChildComp =
 
       {- Zoom & Size -}
       , renderIfEnabled ZoomControls $ HH.div
-        [ HP.style "position: absolute; right: 0; top: 0; user-select: none;" ]
+        [ HP.style Style.zoomBox ]
         [ _qbutton "Reset zoom" ResetZoom
-        , HH.span [ HP.style _infoStyle ] [ HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom) ]
-        , HH.span [ HP.style _infoStyle ] [ HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height ]
+        , HH.span [ HP.style Style.zoomItem ] [ HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom) ]
+        , HH.span [ HP.style Style.zoomItem ] [ HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height ]
         ]
 
       {- Keyboard info -}
 
       , renderIfEnabled Hints $ HH.div
         []
-        $ HH.span [ HP.style _infoBlStyle ] <$> pure <$>
+        $ HH.span [ HP.style Style.hintsBox ] <$> pure <$>
           (
           [ HH.text "\"+\" to slightly zoom in"
           , HH.text "\"-\" to slightly zoom out"
@@ -282,8 +282,8 @@ component' modes config mbChildComp =
       , HH.div
           -- [ HP.style "position: absolute; right: 0; top: 20px;" ]
           [ HP.style $ case state.selection of
-            Just _  -> "position: absolute; left: 0; top: 200px;"
-            Nothing -> "position: absolute; left: 0; top: 120px;"
+            Just _  -> Style.breadcrumbsWithSelection
+            Nothing -> Style.breadcrumbs
           ]
           [ HH.text "Location: "
           , renderPath Breadcrumbs config state.tree state.focus
@@ -300,10 +300,10 @@ component' modes config mbChildComp =
 
       {- Current Preview(s) -}
       , renderIfEnabled Preview $ HH.div
-          [ HP.style $ "position: absolute; right: 0; top: 100px; " <> case state.preview of
-            Focused _ -> "opacity: 1.0;"
-            LostFocus _ -> "opacity: 0.6;"
-            None -> ""
+          [ HP.style $ case state.preview of
+            Focused _ -> Style.previewFocused
+            LostFocus _ -> Style.previewBlurred
+            None -> Style.previewNone
           ]
           $ pure
           $ case state.preview of
@@ -320,14 +320,14 @@ component' modes config mbChildComp =
 
       {- Current Pinned -}
       , renderIfEnabled Pinned $ HH.div
-          [ HP.style $ "position: absolute; right: 0; top: 200px;"
+          [ HP.style $ Style.pinnedBox
           ]
           $ wrapPinUnpin config true state.pinned state.tree
           <$> Array.fromFoldable state.pinned
 
       {- History -}
       , renderIfEnabled History $ HH.div
-          [ HP.style $ "position: absolute; right: 0; top: 600px; user-select: none;"
+          [ HP.style $ Style.historyBox
           ]
           $ (HH.div [] <<< pure <<< renderPath SingleGo config state.tree)
           <$> Array.reverse state.history
@@ -335,7 +335,7 @@ component' modes config mbChildComp =
       {- String Rep -}
 
       , renderIfEnabled TextEdit $ HH.div
-          [ HP.style $ "position: absolute; right: 200px; bottom: 200px; user-select: none;"
+          [ HP.style $ Style.textEditBox
           ]
           [ HH.textarea
             [ HP.value $ TreeConv.toString TreeConv.Indent SvgI.toText state.tree
@@ -350,7 +350,7 @@ component' modes config mbChildComp =
       {- JSON Rep -}
 
       , renderIfEnabled JsonOutput $ HH.div
-          [ HP.style $ "position: absolute; right: 200px; bottom: 50px; user-select: none;"
+          [ HP.style $ Style.jsonRepBox
           ]
           [ HH.textarea
             [ HP.value $ TreeConv.writeJSON state.tree
@@ -414,8 +414,8 @@ component' modes config mbChildComp =
       state <- H.get
       when (not state.editingTreeText) $ do
         H.liftEffect $ E.preventDefault $ KE.toEvent evt
-        H.liftEffect $ Console.log $ "key:" <> KE.key evt
-        H.liftEffect $ Console.log $ "code:" <> KE.code evt
+        -- H.liftEffect $ Console.log $ "key:" <> KE.key evt
+        -- H.liftEffect $ Console.log $ "code:" <> KE.code evt
         handleKey $ KE.key evt
     ResetZoom ->
       H.modify_ _ { zoom = 1.0 }
@@ -516,7 +516,7 @@ _isArrowKey = case _ of
 
 
 _qbutton :: forall p action. String -> action -> HH.HTML p action
-_qbutton = _qbutton' _buttonStyle
+_qbutton = _qbutton' Style.button
 
 _qbutton' :: forall p action. String -> String -> action -> HH.HTML p action
 _qbutton' style label action =
@@ -527,18 +527,12 @@ _qbutton' style label action =
       [ HH.text label ]
 
 
-_buttonStyle   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid black; font-family: sans-serif; font-size: 11px; user-select: none;" :: String
-_pathStepStyle = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid blue;  font-family: sans-serif; font-size: 11px; user-select: none;" :: String
-_infoStyle     = "padding: 2px 5px;" :: String
-_infoBlStyle   = "padding: 2px 5px; display: block;" :: String
-
-
 _pathStepButtonRaw :: forall p a. String -> Maybe (Action a) -> HH.HTML p (Action a)
 _pathStepButtonRaw label = case _ of
-    Just action -> _qbutton' _pathStepStyle label action
+    Just action -> _qbutton' Style.pathStep label action
     Nothing ->
       HH.span
-        [ HP.style _pathStepStyle ]
+        [ HP.style Style.pathStep ]
         [ HH.text label ]
 
 

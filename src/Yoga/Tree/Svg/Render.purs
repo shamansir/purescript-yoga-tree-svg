@@ -35,6 +35,7 @@ import Yoga.Tree.Extended.Path (Path)
 import Yoga.Tree.Extended.Path (lastPos) as Path
 
 import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale)
+import Yoga.Tree.Svg.Style as Style
 
 import Halogen as H
 import Halogen.HTML (HTML)
@@ -217,7 +218,7 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
         renderValue nodePath { x, y, value } =
             HS.g
                 [ HSA.transform $ pure $ HSA.Translate x y
-                , HHP.style "cursor: pointer; pointer-events: all;"
+                , HHP.style Style.value
                 , HE.onClick     $ const $ events.valueClick nodePath value
                 , HE.onMouseOver $ const $ events.valueOver  nodePath value
                 , HE.onMouseOut  $ const $ events.valueOut   nodePath value
@@ -237,7 +238,7 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
                     HS.g
-                        [ HHP.style "cursor: cross; pointer-events: none;" ]
+                        [ HHP.style Style.edge ]
                         $ pure
                         $ _renderEdge modes.edgeMode config
                         $
@@ -285,7 +286,7 @@ renderPreview' nodeMode config mbComponent nodeStatus nodePath value =
                 , HSA.fill $ HSA.RGBA 0 0 0 0.0
                 ]
             , HS.g
-                [ HHP.style "pointer-events: none;"
+                [ HHP.style Style.previewBox
                 ]
                 $ pure
                 $ _renderValue nodeMode config _preview mbComponent nodeStatus position nodePath value

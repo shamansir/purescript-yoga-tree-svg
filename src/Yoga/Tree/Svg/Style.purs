@@ -108,3 +108,24 @@ maA Dark = HSA.RGB 160 47 111
 maB :: C
 maB Light = HSA.RGB 160 47 111
 maB Dark = HSA.RGB 206 93 151
+
+
+component =  "oveflow: hidden; user-select: none;" :: String
+graph = "position: absolute; left: 0; top: 0;" :: String
+zoomBox = "position: absolute; right: 0; top: 0; user-select: none;" :: String
+breadcrumbs = "position: absolute; left: 0; top: 120px;" :: String
+breadcrumbsWithSelection = "position: absolute; left: 0; top: 200px;" :: String
+previewFocused = "position: absolute; right: 0; top: 100px; opacity: 1.0;" :: String
+previewBlurred = "position: absolute; right: 0; top: 100px; opacity: 0.6;" :: String
+previewNone = "position: absolute; right: 0; top: 100px" :: String
+pinnedBox = "position: absolute; right: 0; top: 200px;" :: String
+historyBox = "position: absolute; right: 0; top: 600px; user-select: none;" :: String
+textEditBox = "position: absolute; right: 200px; bottom: 200px; user-select: none;" :: String
+jsonRepBox = "position: absolute; right: 200px; bottom: 50px; user-select: none;" :: String
+button   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid black; font-family: sans-serif; font-size: 11px; user-select: none;" :: String
+pathStep = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0px 2px; border-radius: 5px; border: 1px solid blue;  font-family: sans-serif; font-size: 11px; user-select: none;" :: String
+zoomItem = "padding: 2px 5px;" :: String
+hintsBox = "padding: 2px 5px; display: block;" :: String
+value = "cursor: pointer; pointer-events: all;" :: String
+edge  = "cursor: pointer; pointer-events: all;" :: String
+previewBox = "pointer-events: none;" :: String
