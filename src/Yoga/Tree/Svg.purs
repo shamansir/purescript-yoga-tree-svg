@@ -1,7 +1,6 @@
 module Yoga.Tree.Svg
   ( NodeComponent
   , component, component_
-  , class IsSvgTreeItem, toText
   ) where
 
 import Prelude
@@ -34,15 +33,19 @@ import Web.HTML.Window (document, history)
 import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
 import Web.UIEvent.WheelEvent as WE
+import Web.Event.Event as E
 
 import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value, children) as Tree
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path (find, root, toArray, depth, advance, safeAdvance, Dir(..), advanceDir, isNextFor) as Path
+import Yoga.Tree.Extended.Convert as TreeConv
 import Yoga.Tree.Svg.Render (WithStatus)
 import Yoga.Tree.Svg.Render as SvgTree
-import Yoga.Tree.TempConvert as TreeConv
+import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
+import Yoga.Tree.Svg.SvgItem (toText, fromText, default) as SvgI
+
 -- import Yoga.Tree.Zipper (Path)
 
 
@@ -58,8 +61,9 @@ data Action a
     | ResetZoom
     | Pin Path
     | UnPin Path
-    -- | Advance Int
-    -- | GoUp
+    | TryParse String
+    | PauseListeningKeys
+    | ResumeListeningKeys
 
 
 data PathMode
@@ -89,14 +93,11 @@ type State a =
     , zoom :: Number
     , size :: { width :: Number, height :: Number }
     , selection :: Maybe Path
+    , editingTreeText :: Boolean
     }
 
 
 type NodeComponent m a = SvgTree.NodeComponent m a
-
-
-class IsSvgTreeItem a where
-  toText :: a -> String
 
 
 component :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.Config a -> H.Component query (Input a) output m
@@ -137,6 +138,7 @@ component' modes config mbChildComp =
     , preview : None
     , pinned : Set.empty
     , selection : Nothing
+    , editingTreeText : false
     }
 
   receive :: Input a -> State a -> State a
@@ -310,9 +312,12 @@ component' modes config mbChildComp =
           [ HP.style $ "position: absolute; right: 200px; bottom: 200px; user-select: none;"
           ]
           [ HH.textarea
-            [ HP.value $ TreeConv.toString toText state.tree
+            [ HP.value $ TreeConv.toString TreeConv.Indent SvgI.toText state.tree
             , HP.rows 50
             , HP.cols 50
+            , HE.onValueChange TryParse
+            , HE.onFocusIn $ const PauseListeningKeys
+            , HE.onFocusOut $ const ResumeListeningKeys
             ]
           ]
 
@@ -361,11 +366,21 @@ component' modes config mbChildComp =
           }
       )
     HandleKey sid evt -> do
-      H.liftEffect $ Console.log $ "key:" <> KE.key evt
-      H.liftEffect $ Console.log $ "code:" <> KE.code evt
-      handleKey $ KE.key evt
+      state <- H.get
+      when (not state.editingTreeText) $ do
+        H.liftEffect $ E.preventDefault $ KE.toEvent evt
+        H.liftEffect $ Console.log $ "key:" <> KE.key evt
+        H.liftEffect $ Console.log $ "code:" <> KE.code evt
+        handleKey $ KE.key evt
     ResetZoom ->
       H.modify_ _ { zoom = 1.0 }
+    TryParse userInput -> do
+      s <- H.get
+      handleAction
+        $ Receive
+          { size : s.size
+          , tree : TreeConv.fromString SvgI.fromText userInput <#> fromMaybe SvgI.default
+          }
     FocusOn path ->
       H.modify_ $ updateFocus path
     NodeClick path _ ->
@@ -378,6 +393,11 @@ component' modes config mbChildComp =
       H.modify_ \s -> s { pinned = s.pinned # Set.insert path }
     UnPin path ->
       H.modify_ \s -> s { pinned = s.pinned # Set.delete path }
+    PauseListeningKeys ->
+      H.modify_ _ { editingTreeText = true }
+    ResumeListeningKeys ->
+      H.modify_ _ { editingTreeText = false }
+
 
   handleKey key | key == "+" = H.modify_ \s -> s { zoom = s.zoom + 0.1 }
   handleKey key | key == "-" = H.modify_ \s -> s { zoom = s.zoom - 0.1 }

@@ -28,10 +28,10 @@ import Yoga.Tree (Tree)
 -- import Yoga.Tree as Tree
 import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended as Tree
-import Yoga.Tree.Svg (class IsSvgTreeItem)
-import Yoga.Tree.Svg (NodeComponent, component_, toText) as YogaSvgTree
-import Yoga.Tree.Svg.Render (Modes, Config) as YogaSvgTree
-import Yoga.Tree.Svg.Render (NodeMode(..), EdgeMode(..)) as YST
+import Yoga.Tree.Svg (NodeComponent, component_) as YST
+import Yoga.Tree.Svg.Render (Modes, Config, NodeMode(..), EdgeMode(..)) as YST
+import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
+import Yoga.Tree.Svg.SvgItem (toText) as YSTI
 
 import Web.Event.Event as E
 import Web.HTML (window) as Web
@@ -157,19 +157,21 @@ manyItems =
 derive newtype instance Show IntItem
 instance IsSvgTreeItem IntItem where
   toText = show
+  fromText = Int.fromString >>> map IntItem
+  default = IntItem $ -1
 
 
-config :: forall a. IsSvgTreeItem a => YogaSvgTree.Config a
+config :: forall a. IsSvgTreeItem a => YST.Config a
 config =
   { edgeColor : \_ _ _ _ -> HSA.RGB 0 0 0
   , edgeLabel : \_ _ _ _ -> "E"
-  , valueLabel : const YogaSvgTree.toText
+  , valueLabel : const YSTI.toText
   , valueColor : const $ const $ HSA.RGB 200 200 200
   , valueSize  : const $ const { width : 200.0, height : 25.0 }
   }
 
 
-modes :: YogaSvgTree.Modes
+modes :: YST.Modes
 modes =
   { nodeMode : YST.NodeWithLabel
   , previewMode : YST.Component -- YST.NodeWithLabel
@@ -198,12 +200,12 @@ component startFromTree =
   render :: forall action. State a -> H.ComponentHTML action Slots m
   render state =
     HH.slot_ _tree unit
-      (YogaSvgTree.component_ modes config child)
+      (YST.component_ modes config child)
       { tree : state.tree
       , size : reduceSize $ fromMaybe defaultSize state.window
       }
 
-  child :: YogaSvgTree.NodeComponent m a
+  child :: YST.NodeComponent m a
   child = H.mkComponent
     { initialState : identity
     , render : childString >>> HH.text >>> pure >>> HS.text [ HSA.fill $ HSA.RGB 0 0 0 ]
@@ -211,7 +213,7 @@ component startFromTree =
     }
 
   childString { path, value } =
-    show path <> " // " <> YogaSvgTree.toText value
+    show path <> " // " <> YSTI.toText value
 
   handleAction = case _ of
     Initialize -> do
