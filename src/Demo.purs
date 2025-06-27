@@ -87,6 +87,10 @@ ii :: Int -> DemoItem
 ii = IntItem
 
 
+ss :: String -> DemoItem
+ss = StrItem
+
+
 q :: forall n. n -> Tree n
 q = Tree.leaf
 
@@ -166,6 +170,36 @@ manyItems =
     , ii 30  :<~ (ii <$> (mapWithIndex const $ Array.replicate  30 unit))
     , ii 100 :<~ (ii <$> (mapWithIndex const $ Array.replicate 100 unit))
     ]
+
+
+lettersNumbers :: Tree DemoItem
+lettersNumbers =
+  ss "all" :<
+    [ ss "numbers" :<~ (ii <$> [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 ])
+    , ss "a-d"     :< ([ ss "a" :<~ aVars , q $ ss "b", ss "c" :<~ cVars, ss "d" :<~ dVars ])
+    , ss "e-j"     :< ([ ss "e" :<~ eVars, q $ ss "f", ss "g" :<~ gVars, ss "h" :<~ hVars, ss "i" :<~ iVars, q $ ss "j" ])
+    ]
+  where
+    aVars = ss <$> [ "à", "á", "â", "ä", "ǎ", "æ", "ã", "å", "ā" ]
+    cVars = ss <$> [ "ç", "ć", "č", "ċ" ]
+    dVars = ss <$> [ "ď", "ð" ]
+    eVars = ss <$> [ "è", "é", "ê", "ë", "ě", "ẽ", "ē", "ė", "ę" ]
+    gVars = ss <$> [ "ğ", "ġ" ]
+    hVars = ss <$> [ "ħ" ]
+    iVars = ss <$> [ "ì", "í", "î", "ï", "ǐ", "ĩ", "ī", "ı", "į" ]
+    kVars = ss <$> [ "ķ" ]
+    lVars = ss <$> [ "ł", "ļ", "ľ" ]
+    nVars = ss <$> [ "ñ", "ń", "ņ", "ň" ]
+    oVars = ss <$> [ "ò", "ó", "ô", "ö", "ǒ", "œ", "ø", "õ", "ō" ]
+    rVars = ss <$> [ "ř" ]
+    sVars = ss <$> [ "ß", "ş", "ș", "ś", "š" ]
+    tVars = ss <$> [ "ț", "ť", "þ" ]
+    uVars = ss <$> [ "ù", "ú", "û", "ü", "ǔ", "ũ", "ū", "ű", "ů" ]
+    wVars = ss <$> [ "ŵ" ]
+    yVars = ss <$> [ "ý", "ŷ", "ÿ" ]
+    zVars = ss <$> [ "ź", "ž", "ż" ]
+
+
 
 
 instance Show DemoItem where

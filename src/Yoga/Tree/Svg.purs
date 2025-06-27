@@ -87,6 +87,7 @@ data Element
     | JsonOutput
     | Hints
     | ZoomControls
+    | FoldTree
 
 
 derive instance Eq Element
@@ -94,7 +95,7 @@ derive instance Ord Element
 
 
 allElements :: Set Element
-allElements = Set.fromFoldable [ Preview, History, Pinned, TextEdit, JsonOutput, Hints, ZoomControls ]
+allElements = Set.fromFoldable [ Preview, History, Pinned, TextEdit, JsonOutput, Hints, ZoomControls, FoldTree ]
 
 
 type Input a =
@@ -276,10 +277,11 @@ component' modes config mbChildComp =
                 , HH.text "<number> to select move to a next child"
                 , HH.text "arrows to navigate tree up/down/right/left"
                 , HH.text "<Enter> to navigate to selected node"
-                , HH.text "<Space> to pin selected node"
+                , HH.text "<.> to pin selected node"
                 ]
             Nothing ->
                 [ HH.text "<Space> to start navigating with keyboard"
+                , HH.text "<.> to pin hovered node"
                 , if Path.depth state.focus > 0 then HH.text "\"*\" or <Tab> to return to the root" else HH.text ""
                 ]
           )
@@ -339,7 +341,6 @@ component' modes config mbChildComp =
           <$> Array.reverse state.history
 
       {- String Rep -}
-
       , renderIfEnabled TextEdit $ HH.div
           [ HP.style $ Style.textEditBox
           ]
@@ -355,7 +356,6 @@ component' modes config mbChildComp =
           ]
 
       {- JSON Rep -}
-
       , renderIfEnabled JsonOutput $ HH.div
           [ HP.style $ Style.jsonRepBox
           ]
@@ -456,17 +456,21 @@ component' modes config mbChildComp =
     ResumeListeningKeys ->
       H.modify_ _ { editingTreeText = false }
 
-
   handleKey key | key == "+" = H.modify_ \s -> s { zoom = s.zoom + 0.1 }
   handleKey key | key == "-" = H.modify_ \s -> s { zoom = s.zoom - 0.1 }
   handleKey key | key == "=" = H.modify_ _ { zoom = 1.0 }
+  handleKey key | key == "." =
+      H.modify_ \s ->
+        s { pinned = s.pinned # Set.insert ( case s.preview of
+              Focused previewPath -> previewPath
+              _ -> case s.selection of
+                Just selPath -> selPath
+                Nothing -> s.focus
+            )
+        }
   handleKey key | key == " " =
       H.modify_ \s ->
-        case s.selection of
-            Just path ->
-              s { pinned = s.pinned # Set.insert path }
-            Nothing ->
-              s { selection = Just s.focus }
+        s { selection = Just s.focus }
   handleKey key | key == "*" = H.modify_ $ updateFocus Path.root
   handleKey key | String.toLower key == "tab" = H.modify_ $ updateFocus Path.root
   handleKey key | String.toLower key == "escape" =
