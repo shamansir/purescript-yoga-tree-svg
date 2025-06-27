@@ -18,6 +18,7 @@ import Prim.Row (class Cons) as Row
 
 import Data.Symbol (class IsSymbol)
 import Data.Number (pi) as Number
+import Data.Int (toNumber) as Int
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Graph (Graph, Edge)
 import Data.Graph (toMap, fromMap, lookup) as Graph
@@ -36,6 +37,7 @@ import Yoga.Tree.Extended.Path (lastPos) as Path
 
 import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale)
 import Yoga.Tree.Svg.Style as Style
+import Yoga.Tree.Svg.Style (Mode(..))
 
 import Halogen as H
 import Halogen.HTML (HTML)
@@ -106,7 +108,7 @@ distributePositions geom getSize graph =
         graphMap = Graph.toMap graph
         zeroPos = { x : 0.0, y : 0.0 }
         childPos parentPos =
-            findPosition geom.baseRadius parentPos 0.0 (2.0 * Number.pi / 3.0)
+            findPosition geom.baseDistance parentPos 0.0 (2.0 * Number.pi / 3.0)
         injectRect value pos size =
             { x : pos.x, y : pos.y, width : size.width, height : size.height, value }
 
@@ -145,9 +147,11 @@ distributePositions geom getSize graph =
 type Config a =
     { valueLabel :: Path -> a -> String
     , valueColor :: Path -> a -> HSA.Color
+    , valueLabelColor :: Path -> a -> HSA.Color
+    , valueLabelWidth :: Path -> a -> Int
     , edgeColor :: Path -> a -> Path -> a -> HSA.Color
     , edgeLabel :: Path -> a -> Path -> a -> String
-    , valueSize :: Path -> a -> { width :: Number, height :: Number }
+    , componentSize :: Path -> a -> { width :: Number, height :: Number }
     }
 
 
@@ -168,7 +172,8 @@ type Modes =
 
 type Geometry =
     { scaleFactor :: Number
-    , baseRadius :: Number
+    , baseDistance :: Number
+    , valueRadius :: Number -- = 5.0 :: Number
     , scaleLimit :: { min :: Number, max :: Number }
     }
 
@@ -213,7 +218,7 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
         valuesGraph :: Graph Path a
         valuesGraph = graph <#> _valueOf
         positionsMap :: PositionedGraphMap a
-        positionsMap = Graph.toMap $ distributePositions geom config.valueSize valuesGraph
+        positionsMap = Graph.toMap $ distributePositions geom config.componentSize valuesGraph
         renderValue :: Path -> Positioned a -> _
         renderValue nodePath { x, y, value } =
             HS.g
@@ -225,15 +230,18 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
                 ]
                 $ case (statusOf nodePath) of
                     KeysNext ->
-                        [ _renderValue modes.nodeMode config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                        [ _renderValue modes.nodeMode geom config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
                         , HS.text
-                            []
+                            [ HSA.x $ -1.0 * (geom.valueRadius / 2.0)
+                            , HSA.y $ -7.0
+                            , HSA.fill $ Style.orA Light
+                            ]
                             [ case Path.lastPos nodePath of -- TODO: pass index of the item instead
                                 Just lastVal -> HH.text $ show lastVal
                                 Nothing -> HH.text "?"
                             ]
                         ]
-                    _ -> pure $ _renderValue modes.nodeMode config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                    _ -> pure $ _renderValue modes.nodeMode geom config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
@@ -252,44 +260,47 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
             <> [ renderValue nodePath a ]
 
 
-renderPreview :: forall a i m. NodeMode -> Config a -> NodeStatus -> Path -> a -> GraphHtml m i
-renderPreview nodeMode config = renderPreview' nodeMode config Nothing
+renderPreview :: forall a i m. NodeMode -> Geometry -> Config a -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPreview nodeMode geom config = renderPreview' nodeMode geom config Nothing
 
 
-renderPreview_ :: forall a i m. NodeMode -> Config a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
-renderPreview_ nodeMode config childComp = renderPreview' nodeMode config (Just childComp)
+renderPreview_ :: forall a i m. NodeMode -> Geometry -> Config a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPreview_ nodeMode geom config childComp = renderPreview' nodeMode geom config (Just childComp)
 
 
-renderPreview' :: forall a i m. NodeMode -> Config a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
-renderPreview' nodeMode config mbComponent nodeStatus nodePath value =
+renderPreview' :: forall a i m. NodeMode -> Geometry -> Config a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPreview' nodeMode geom config mbComponent nodeStatus nodePath value =
     let
-        previewSize = config.valueSize nodePath value
+        componentSize = config.componentSize nodePath value
+        padding = 5.0
         position =
             case nodeMode of
               Component ->
                 { x : 0.0
-                , y : previewSize.height / 2.0
+                , y : componentSize.height / 2.0
                 }
               _ ->
-                { x : previewSize.width / 2.0
-                , y : previewSize.height / 2.0
+                { x : componentSize.width  / 2.0
+                , y : componentSize.height / 2.0
                 }
     in
         HS.svg
-            [ HSA.width  $ previewSize.width
-            , HSA.height $ previewSize.height
+            [ HSA.width  $ componentSize.width + padding * 2.0
+            , HSA.height $ componentSize.height + padding * 2.0
             ]
             [ HS.rect
-                [ HSA.width  $ previewSize.width
-                , HSA.height $ previewSize.height
+                [ HSA.width  $ componentSize.width + padding * 2.0
+                , HSA.height $ componentSize.height + padding * 2.0
                 , HSA.stroke $ _strokeFromStatus nodeStatus
+                , HSA.strokeWidth $ _strokeWidthFromStatus nodeStatus
                 , HSA.fill $ HSA.RGBA 0 0 0 0.0
                 ]
             , HS.g
                 [ HHP.style Style.previewBox
+                , HSA.transform $ pure $ HSA.Translate padding padding
                 ]
                 $ pure
-                $ _renderValue nodeMode config _preview mbComponent nodeStatus position nodePath value
+                $ _renderValue nodeMode geom config _preview mbComponent nodeStatus position nodePath value
             ]
 
 
@@ -345,6 +356,7 @@ _renderValue
      . IsSymbol slot
     => Row.Cons slot NodeSlot r' Slots
     => NodeMode
+    -> Geometry
     -> Config a
     -> Proxy slot
     -> Maybe (NodeComponent m a)
@@ -353,42 +365,63 @@ _renderValue
     -> Path
     -> a
     -> GraphHtml m i
-_renderValue NodeWithLabel config _ _ status pos nodePath value =
+_renderValue NodeWithLabel geom config _ _ status pos nodePath value =
     HS.g
         []
         [ HS.circle
             [ HSA.cx pos.x
             , HSA.cy pos.y
-            , HSA.r 5.0
+            , HSA.r geom.valueRadius
             , HSA.fill $ config.valueColor nodePath value
             , HSA.stroke $ _strokeFromStatus status
+            , HSA.strokeWidth $ _strokeWidthFromStatus status
+            ]
+        , HS.rect
+            [ HSA.fill $ Style.blA Light
+            , HSA.x $ pos.x
+            , HSA.y $ pos.y - 2.0
+            , HSA.rx 6.0
+            , HSA.ry 6.0
+            , HSA.width $ Int.toNumber (config.valueLabelWidth nodePath value) * 8.0 + 5.0
+            , HSA.height 15.0
+            , HSA.fillOpacity $ case status of
+                Normal -> 0.1
+                FocusRoot -> 0.0
+                KeysFocus -> 0.6
+                KeysNext -> 0.35
+                HoverFocus -> 0.3
+                HoverGhost -> 0.2
+                Selected -> 0.6
+                Pinned -> 0.0
+                _ -> 0.1
             ]
         , HS.text
-            [ HSA.fill $ config.valueColor nodePath value
+            [ HSA.fill $ config.valueLabelColor nodePath value
             , HSA.x $ pos.x + 6.0
             , HSA.y $ pos.y + 9.0
             ]
             [ HH.text $ config.valueLabel nodePath value
             ]
         ]
-_renderValue JustNode config _ _ status pos nodePath value =
+_renderValue JustNode geom config _ _ status pos nodePath value =
     HS.g
         []
         [ HS.circle
             [ HSA.cx pos.x
             , HSA.cy pos.y
-            , HSA.r 5.0
+            , HSA.r geom.valueRadius
             , HSA.fill $ config.valueColor nodePath value
             , HSA.stroke $ _strokeFromStatus status
+            , HSA.strokeWidth $ _strokeWidthFromStatus status
             ]
         ]
-_renderValue Component _ _ Nothing status pos _ _ =
+_renderValue Component _ _ _ Nothing status pos _ _ =
     HS.text
         [ HSA.x pos.x, HSA.y pos.y
         , HSA.fill $ HSA.RGB 0 0 0
         ]
         [ HH.text "NO COMPONENT" ]
-_renderValue Component _ pslot (Just childComp) status pos nodePath value =
+_renderValue Component _ _ pslot (Just childComp) status pos nodePath value =
     HS.g
         [ HSA.transform $ pure $ HSA.Translate pos.x pos.y ]
         $ pure
@@ -403,10 +436,21 @@ _renderValue Component _ pslot (Just childComp) status pos nodePath value =
 
 _strokeFromStatus :: NodeStatus -> HSA.Color
 _strokeFromStatus = case _ of
-  Normal -> HSA.RGB 0 0 0
-  FocusRoot -> HSA.RGB 0 70 0
-  HoverFocus -> HSA.RGB 255 0 0
-  HoverGhost -> HSA.RGB 170 0 0
-  Selected -> HSA.RGB 0 0 255
-  KeysNext -> HSA.RGB 0 255 0
+  Normal -> Style.tx Light
+  FocusRoot -> Style.reA Light
+  HoverFocus -> Style.grB Light
+  HoverGhost -> Style.grA Light
+  Selected -> Style.blB Light
+  KeysNext -> Style.blA Light
   _ -> HSA.RGB 0 0 0
+
+
+_strokeWidthFromStatus :: NodeStatus -> Number
+_strokeWidthFromStatus  = case _ of
+  Normal -> 1.0
+  FocusRoot -> 2.0
+  HoverFocus -> 3.0
+  HoverGhost -> 2.0
+  Selected -> 3.0
+  KeysNext -> 2.0
+  _ -> 1.0

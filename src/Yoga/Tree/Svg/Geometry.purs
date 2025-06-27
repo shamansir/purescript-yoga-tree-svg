@@ -18,15 +18,15 @@ import Yoga.Tree.Extended.Path (Path)
 
 
 findPosition :: Number -> Position -> Number -> Number -> Int -> Int -> Position
-findPosition baseRadius parent startAngle endAngle count index =
+findPosition baseDistance parent startAngle endAngle count index =
     let
         currentAngle = startAngle + ((endAngle - startAngle) / Int.toNumber count) * Int.toNumber index
 
         co = Number.cos currentAngle
         si = Number.sin currentAngle
 
-        x = parent.x + (co * baseRadius - si * baseRadius)
-        y = parent.y + (si * baseRadius + co * baseRadius)
+        x = parent.x + (co * baseDistance - si * baseDistance)
+        y = parent.y + (si * baseDistance + co * baseDistance)
     in
     { x, y }
 

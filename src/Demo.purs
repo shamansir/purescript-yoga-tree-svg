@@ -2,12 +2,15 @@ module Demo where
 
 import Prelude
 
+import Debug as Debug
+
 import Foreign (F)
 
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Int as Int
 import Data.Array (replicate) as Array
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.String (length) as String
 
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
@@ -180,8 +183,10 @@ config =
   { edgeColor : \_ _ _ _ -> HSA.RGB 0 0 0
   , edgeLabel : \_ _ _ _ -> "E"
   , valueLabel : const YSTI.toText
+  , valueLabelColor : const $ const $ HSA.RGB 10 10 10
+  , valueLabelWidth : \path -> String.length <<< config.valueLabel path
   , valueColor : const $ const $ HSA.RGB 200 200 200
-  , valueSize  : const $ const { width : 200.0, height : 25.0 }
+  , componentSize  : const $ const { width : 200.0, height : 25.0 }
   }
 
 

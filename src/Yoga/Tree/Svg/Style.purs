@@ -2,7 +2,7 @@ module Yoga.Tree.Svg.Style where
 
 import Prelude
 
-import Halogen.Svg.Attributes (Color(..)) as HSA
+import Halogen.Svg.Attributes (Color(..), printColor) as HSA
 
 
 data Mode
@@ -110,7 +110,11 @@ maB Light = HSA.RGB 160 47 111
 maB Dark = HSA.RGB 206 93 151
 
 
-component =  "oveflow: hidden; user-select: none; font-family: \"JetBrains Mono\", sans-serif; font-size: 10px" :: String
+pc = HSA.printColor
+
+
+component :: Number -> Number -> String
+component w h = "width:" <> show w <> "px; height: " <> show h <> "px; margin: 0; padding: 0; overflow: hidden; user-select: none; font-family: \"JetBrains Mono\", sans-serif; font-size: 10px; background-color: " <> pc (background Light) <> ";"
 graph = "position: absolute; left: 0; top: 0;" :: String
 zoomBox = "position: absolute; margin: 5px; right: 0; top: 0; user-select: none;" :: String
 breadcrumbs = "position: absolute; left: 0; top: 120px; margin: 5px;" :: String
@@ -120,13 +124,19 @@ previewBlurred = "position: absolute; right: 0; top: 100px; opacity: 0.6;" :: St
 previewNone = "position: absolute; right: 0; top: 100px" :: String
 pinnedBox = "position: absolute; right: 0; top: 200px;" :: String
 historyBox = "position: absolute; right: 0; top: 600px; user-select: none;" :: String
-textEditBox = "position: absolute; right: 200px; bottom: 200px; user-select: none;" :: String
-jsonRepBox = "position: absolute; right: 200px; bottom: 50px; user-select: none;" :: String
+textEditBox = "position: absolute; right: 220px; bottom: 200px; user-select: none;" :: String
+jsonRepBox = "position: absolute; right: 220px; bottom: 50px; user-select: none;" :: String
 button   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0 2px; border-radius: 5px; border: 1px solid black; font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;" :: String
-pathStep = "cursor: pointer; pointer-events: all; display: inline-block; padding: 2px 5px; margin: 2px 2px; border-radius: 5px; border: 1px solid rgb(230,230,230); font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif; " :: String
+pathBox = "display: inline-block;" :: String
+pathWithGo = "" :: String
+pathStep :: Boolean -> String
+pathStep true  = "cursor: auto;    pointer-events: all; display: inline-block; padding: 2px 5px; margin: 2px 2px; border-radius: 5px; border: 1px solid rgb(230,230,230); font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;"
+pathStep false = "cursor: pointer; pointer-events: all; display: inline-block; padding: 2px 5px; margin: 2px 2px; border-radius: 5px; border: 1px solid rgb(90,90,90); font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;"
 zoomItem = "padding: 2px 5px;" :: String
-hintsBox = "padding: 2px 5px; display: block;" :: String
+hintsBox = "margin: 5px; max-width: 400px; padding: 2px 5px; border-radius: 5px; border: 1px solid rgb(190,190,190)" :: String
+hintsLine = "display: block;" :: String
 value = "cursor: pointer; pointer-events: all;" :: String
 edge  = "cursor: pointer; pointer-events: all;" :: String
-previewBox = "pointer-events: none;" :: String
-textarea = "font-family: \"JetBrains Mono\", sans-serif; font-size: 10px; border-radius: 6px; " :: String
+previewBox = "pointer-events: none; display: block;" :: String
+textarea = "font-family: \"JetBrains Mono\", sans-serif; font-size: 10px; border-radius: 6px; padding: 5px; background-color: " <> pc (background2 Light) <> ";" :: String
+pinBox = "" :: String

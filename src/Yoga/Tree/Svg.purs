@@ -74,6 +74,11 @@ data PathMode
     | SingleGo
 
 
+-- data PathItemMode
+--     = PIReadOnly
+--     | PINav
+
+
 data Element
     = Preview
     | History
@@ -148,7 +153,8 @@ component' modes config mbChildComp =
   geometry :: SvgTree.Geometry
   geometry =
     { scaleFactor : 10.0
-    , baseRadius : 10.0
+    , baseDistance : 30.0
+    , valueRadius : 5.0
     , scaleLimit : { min : 0.2, max : 50.0 }
     }
 
@@ -181,7 +187,7 @@ component' modes config mbChildComp =
   previewAt tree previewPath =
     case Path.find previewPath tree of
       Just previewNode ->
-        SvgTree.renderPreview' modes.previewMode config mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
+        SvgTree.renderPreview' modes.previewMode geometry config mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
 
@@ -221,7 +227,7 @@ component' modes config mbChildComp =
   render :: State a -> _
   render state =
     HH.div
-      [ HP.style Style.component ]
+      [ HP.style $ Style.component state.size.width state.size.height ]
 
       {- Graph component -}
       [ HH.div
@@ -256,8 +262,8 @@ component' modes config mbChildComp =
       {- Keyboard info -}
 
       , renderIfEnabled Hints $ HH.div
-        []
-        $ HH.span [ HP.style Style.hintsBox ] <$> pure <$>
+        [ HP.style Style.hintsBox ]
+        $ HH.span [ HP.style Style.hintsLine ] <$> pure <$>
           (
           [ HH.text "\"+\" to slightly zoom in"
           , HH.text "\"-\" to slightly zoom out"
@@ -301,7 +307,7 @@ component' modes config mbChildComp =
       {- Current Preview(s) -}
       , renderIfEnabled Preview $ HH.div
           [ HP.style $ case state.preview of
-            Focused _ -> Style.previewFocused
+            Focused _   -> Style.previewFocused
             LostFocus _ -> Style.previewBlurred
             None -> Style.previewNone
           ]
@@ -372,15 +378,18 @@ component' modes config mbChildComp =
 
   wrapPinUnpin config allowGo pinned tree nodePath =
     HH.div
-      []
-      [ if not $ Set.member nodePath pinned then
-          _qbutton "Pin" $ Pin nodePath
-        else
-          _qbutton "Unpin" $ UnPin nodePath
-      , if allowGo then
-          renderPath SingleGo config tree nodePath
-        else
-          renderPath ReadOnly config tree nodePath
+      [ HP.style Style.pinBox ]
+      [ HH.div
+        [ ]
+        [ if not $ Set.member nodePath pinned then
+            _qbutton "Pin" $ Pin nodePath
+          else
+            _qbutton "Unpin" $ UnPin nodePath
+        , if allowGo then
+            renderPath SingleGo config tree nodePath
+          else
+            renderPath ReadOnly config tree nodePath
+        ]
       , previewAt tree nodePath
       ]
 
@@ -529,21 +538,21 @@ _qbutton' style label action =
       [ HH.text label ]
 
 
-_pathStepButtonRaw :: forall p a. String -> Maybe (Action a) -> HH.HTML p (Action a)
-_pathStepButtonRaw label = case _ of
-    Just action -> _qbutton' Style.pathStep label action
+_pathStepButtonRaw :: forall p a. Boolean -> String -> Maybe (Action a) -> HH.HTML p (Action a)
+_pathStepButtonRaw isReadOnly label = case _ of
+    Just action -> _qbutton' (Style.pathStep isReadOnly) label action
     Nothing ->
       HH.span
-        [ HP.style Style.pathStep ]
+        [ HP.style (Style.pathStep isReadOnly) ]
         [ HH.text label ]
 
 
-_pathRootButton :: forall a p. (Path -> a -> String) -> Tree a -> HH.HTML p (Action a)
-_pathRootButton toLabel tree =
+_pathRootButton :: forall a p. Boolean -> (Path -> a -> String) -> Tree a -> HH.HTML p (Action a)
+_pathRootButton isReadOnly toLabel tree =
     let
       mbValueAt = tree # Path.find Path.root <#> Tree.value
       buttonLabel = maybe "*" (\val -> toLabel Path.root val <> " [*]") mbValueAt
-    in _pathStepButtonRaw buttonLabel $ Just $ FocusOn Path.root
+    in _pathStepButtonRaw isReadOnly buttonLabel $ Just $ FocusOn Path.root
 
 
 _pathStepButton :: forall a p. Boolean -> (Path -> a -> String) -> Tree a -> Path -> Int -> Int -> HH.HTML p (Action a)
@@ -558,28 +567,28 @@ _pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
       buttonLabel = maybe (show pValueAtDepth) (\val -> toLabel curPath val <> " [" <> show pValueAtDepth <> "]") mbValueAt
     in
     if not isReadOnly && not isLast
-      then _pathStepButtonRaw buttonLabel $ Just $ FocusOn curPath
-      else _pathStepButtonRaw buttonLabel Nothing
+      then _pathStepButtonRaw false buttonLabel $ Just $ FocusOn curPath
+      else _pathStepButtonRaw true  buttonLabel Nothing
 
 
 renderPath :: forall p a. PathMode -> SvgTree.Config a -> Tree a -> Path -> HH.HTML p (Action a)
 renderPath Breadcrumbs config tree path =
   case Path.toArray path of
     [] ->
-      HH.div [] [ _pathStepButtonRaw "*" Nothing ]
+      HH.div [ HP.style Style.pathBox ] [ _pathStepButtonRaw false "*" Nothing ]
     pathArr ->
       HH.div
-        []
-        $ _pathRootButton config.valueLabel tree
+        [ HP.style Style.pathBox ]
+        $ _pathRootButton false config.valueLabel tree
         : mapWithIndex (_pathStepButton false config.valueLabel tree path) pathArr
 renderPath ReadOnly config tree path =
   HH.div
-    []
-    $ _pathRootButton config.valueLabel tree
+    [ HP.style Style.pathBox ]
+    $ _pathRootButton true config.valueLabel tree
     : mapWithIndex (_pathStepButton true config.valueLabel tree path) (Path.toArray path)
 renderPath SingleGo config tree path =
   HH.div
-    []
-    [ renderPath ReadOnly config tree path
-    , _qbutton "Go" $ FocusOn path
+    [ HP.style Style.pathWithGo ]
+    [ _qbutton "Go" $ FocusOn path
+    , renderPath ReadOnly config tree path
     ]
