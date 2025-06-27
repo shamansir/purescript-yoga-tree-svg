@@ -6,11 +6,12 @@ import Debug as Debug
 
 import Foreign (F)
 
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Int as Int
 import Data.Array (replicate) as Array
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.String (length) as String
+import Control.Alt ((<|>))
 
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
@@ -48,7 +49,7 @@ import Web.HTML.Window (toEventTarget, innerWidth, innerHeight) as Window
 -- import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
 
-demoTree :: Tree IntItem
+demoTree :: Tree DemoItem
 demoTree = myTree
 
 
@@ -77,10 +78,12 @@ data Action
   | HandleResize
 
 
-newtype IntItem = IntItem Int
+data DemoItem
+  = IntItem Int
+  | StrItem String
 
 
-ii :: Int -> IntItem
+ii :: Int -> DemoItem
 ii = IntItem
 
 
@@ -123,7 +126,7 @@ ch = map Tree.leaf
 -}
 
 
-myTree :: Tree IntItem
+myTree :: Tree DemoItem
 myTree =
   ii 1 :<
     [ q $ ii 11
@@ -141,7 +144,7 @@ myTree =
     ]
 
 
-simpleTree :: Tree IntItem
+simpleTree :: Tree DemoItem
 simpleTree =
   ii 1 :<~
     (ii <$>
@@ -154,7 +157,7 @@ simpleTree =
     )
 
 
-manyItems :: Tree IntItem
+manyItems :: Tree DemoItem
 manyItems =
   ii 1 :<
     [ ii 500 :<~ (ii <$> (mapWithIndex const $ Array.replicate 500 unit))
@@ -165,17 +168,23 @@ manyItems =
     ]
 
 
-derive newtype instance Show IntItem
-instance IsSvgTreeItem IntItem where
+instance Show DemoItem where
+  show = case _ of
+    IntItem n -> show n
+    StrItem str -> str
+instance IsSvgTreeItem DemoItem where
   toText = show
-  fromText = Int.fromString >>> map IntItem
+  fromText = Int.fromString >>= maybe (StrItem >>> Just) (\n _ -> Just $ IntItem n)
   default = IntItem $ -1
 
 
-instance WriteForeign IntItem where
+instance WriteForeign DemoItem where
   writeImpl (IntItem int) = writeImpl int
-instance ReadForeign IntItem where
-  readImpl f = (readImpl f :: F Int) <#> IntItem
+  writeImpl (StrItem str) = writeImpl str
+instance ReadForeign DemoItem where
+  readImpl f
+    =   ((readImpl f :: F Int)    <#> IntItem)
+    <|> ((readImpl f :: F String) <#> StrItem)
 
 
 config :: forall a. IsSvgTreeItem a => YST.Config a
