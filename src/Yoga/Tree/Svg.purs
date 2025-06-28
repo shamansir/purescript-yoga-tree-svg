@@ -474,7 +474,19 @@ component' modes config mbChildComp =
   handleKey key | key == "*" = H.modify_ $ updateFocus Path.root
   handleKey key | String.toLower key == "tab" = H.modify_ $ updateFocus Path.root
   handleKey key | String.toLower key == "escape" =
-      H.modify_ \s -> s { selection = Nothing }
+      H.modify_ \s -> s { selection = Nothing, preview = None }
+  handleKey key | String.toLower key == "backspace" =
+      H.modify_ \s ->
+        case s.history of
+          [] -> s
+          [ _ ] -> s
+          _ ->
+            let
+              nextHistory = Array.dropEnd 1 s.history
+            in s
+              { history = nextHistory
+              , focus = Array.last nextHistory # fromMaybe Path.root
+              }
   handleKey key | String.toLower key == "enter" = do
       s <- H.get
       H.put $ case s.selection of
