@@ -244,7 +244,7 @@ component' modes config mbChildComp =
           ]
           $ pure
           $ HS.g
-            [ HSA.transform [ HSA.Translate 350.0 350.0 ] ]
+            [ HSA.transform [ HSA.Translate (state.size.width / 3.0) (state.size.height * 0.3) ] ]
             $ SvgTree.renderGraph' modes (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
             -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
             $ injectStatuses state
