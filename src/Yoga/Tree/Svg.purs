@@ -219,8 +219,8 @@ component' modes config mbChildComp =
               checkPreview
     in checkSelection
 
-  injectStatuses :: State a -> Graph Path a -> Graph Path (WithStatus a)
-  injectStatuses state =
+  injectNodeStatuses :: State a -> Graph Path a -> Graph Path (WithStatus a)
+  injectNodeStatuses state =
       Graph.toMap
       >>> mapWithIndex (\path (a /\ xs) -> (statusOf state path /\ a) /\ xs)
       >>> Graph.fromMap
@@ -245,9 +245,9 @@ component' modes config mbChildComp =
           $ pure
           $ HS.g
             [ HSA.transform [ HSA.Translate (state.size.width / 3.0) (state.size.height * 0.3) ] ]
-            $ SvgTree.renderGraph' modes (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
+            $ SvgTree.renderGraph' (_graphStatus state) modes (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
             -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
-            $ injectStatuses state
+            $ injectNodeStatuses state
             $ Tree.toGraph' state.focus
             $ fromMaybe state.tree
             $ Path.find state.focus state.tree
@@ -596,3 +596,14 @@ renderPath SingleGo config tree path =
     [ _qbutton "Go" $ FocusOn path
     , renderPath ReadOnly config tree path
     ]
+
+
+_graphStatus :: forall a. State a -> SvgTree.GraphStatus
+_graphStatus state =
+  case state.selection of
+    Just _ -> SvgTree.GKeysFocus
+    Nothing ->
+      case state.preview of
+        Focused _   -> SvgTree.GHoverFocus
+        LostFocus _ -> SvgTree.GGhostFocus
+        None        -> SvgTree.GNormal

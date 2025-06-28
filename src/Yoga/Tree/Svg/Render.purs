@@ -1,7 +1,7 @@
 module Yoga.Tree.Svg.Render
     ( Slots, NodeSlot, _item, _preview
+    , GraphStatus(..), NodeMode(..), EdgeMode(..), NodeStatus(..)
     , NodeQuery, NodeOutput
-    , NodeMode(..), EdgeMode(..), NodeStatus(..)
     , Modes, Config, Events, Geometry
     , NodeComponent, NodeComponentInput, GraphHtml
     , renderGraph, renderGraph_, renderGraph'
@@ -78,6 +78,13 @@ data EdgeMode
     | EdgeWithLabel
 
 
+data GraphStatus
+    = GKeysFocus
+    | GHoverFocus
+    | GGhostFocus
+    | GNormal
+
+
 data NodeStatus
     = Normal
     | FocusRoot -- when the node is in the root of current navigation
@@ -88,6 +95,9 @@ data NodeStatus
     | Selected -- when node is the part of current selection
     | Pinned -- when node is pinned
     | Combo NodeStatus NodeStatus
+
+
+derive instance Eq NodeStatus
 
 
 foldl' :: forall f a b. Foldable f => (b -> a -> b) -> f a -> b -> b
@@ -233,16 +243,16 @@ _valueOf :: forall a. WithStatus a -> a
 _valueOf = Tuple.snd
 
 
-renderGraph :: forall a i m. Modes -> Geometry -> Config a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraph modes geom config = renderGraph' modes geom config Nothing
+renderGraph :: forall a i m. GraphStatus -> Modes -> Geometry -> Config a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraph gstatus modes geom config = renderGraph' gstatus modes geom config Nothing
 
 
-renderGraph_ :: forall a i m. Modes -> Geometry -> Config a -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraph_ modes geom config childComp = renderGraph' modes geom config (Just childComp)
+renderGraph_ :: forall a i m. GraphStatus -> Modes -> Geometry -> Config a -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraph_ gstatus modes geom config childComp = renderGraph' gstatus modes geom config (Just childComp)
 
 
-renderGraph' :: forall a i m. Modes -> Geometry -> Config a -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
+renderGraph' :: forall a i m. GraphStatus -> Modes -> Geometry -> Config a -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraph' gstatus modes geom config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
         statusOf :: Path -> NodeStatus
         statusOf path = Graph.lookup path graph <#> _statusOf # fromMaybe Normal
@@ -261,7 +271,7 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
                 ]
                 $ case (statusOf nodePath) of
                     KeysNext ->
-                        [ _renderValue modes.nodeMode geom config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                        [ _renderValue gstatus modes.nodeMode geom config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
                         , HS.text
                             [ HSA.x $ -1.0 * (geom.valueRadius / 2.0)
                             , HSA.y $ -7.0
@@ -272,14 +282,14 @@ renderGraph' modes geom config mbComponent events graph = foldl (<>) [] $ mapWit
                                 Nothing -> HH.text "?"
                             ]
                         ]
-                    _ -> pure $ _renderValue modes.nodeMode geom config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                    _ -> pure $ _renderValue gstatus modes.nodeMode geom config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
                     HS.g
                         [ HHP.style Style.edge ]
                         $ pure
-                        $ _renderEdge modes.edgeMode config
+                        $ _renderEdge gstatus { start : statusOf parentPath, end : statusOf childPath } modes.edgeMode config
                         $
                             { start : { path : parentPath, pos : { x : parent.x, y: parent.y }, value : parent.value }
                             , end   : { path : childPath,  pos : { x : child.x,  y: child.y  }, value : child.value  }
@@ -331,7 +341,7 @@ renderPreview' nodeMode geom config mbComponent nodeStatus nodePath value =
                 , HSA.transform $ pure $ HSA.Translate padding padding
                 ]
                 $ pure
-                $ _renderValue nodeMode geom config _preview mbComponent nodeStatus position nodePath value
+                $ _renderValue GNormal nodeMode geom config _preview mbComponent nodeStatus position nodePath value
             ]
 
 
@@ -345,8 +355,11 @@ type EdgeJoint a =
 type EdgeDef a = Edge (EdgeJoint a)
 
 
-_renderEdge :: forall a p i. EdgeMode -> Config a -> EdgeDef a -> HTML p i
-_renderEdge EdgeWithLabel config edge =
+type EdgeStatus = Edge NodeStatus
+
+
+_renderEdge :: forall a p i. GraphStatus -> EdgeStatus -> EdgeMode -> Config a -> EdgeDef a -> HTML p i
+_renderEdge gstatus estatus EdgeWithLabel config edge =
     let
         parent = edge.start
         child = edge.end
@@ -366,7 +379,7 @@ _renderEdge EdgeWithLabel config edge =
             ]
             [ HH.text $ config.edgeLabel parent.path parent.value child.path child.value ]
         ]
-_renderEdge JustEdge config edge =
+_renderEdge gstatus estatus JustEdge config edge =
     let
         parent = edge.start
         child = edge.end
@@ -379,6 +392,7 @@ _renderEdge JustEdge config edge =
             , HSA.x2 childPos.x
             , HSA.y2 childPos.y
             , HSA.stroke $ config.edgeColor parent.path parent.value child.path child.value
+            , HSA.strokeOpacity $ _edgeOpacity gstatus estatus
             ]
         ]
 
@@ -386,7 +400,8 @@ _renderValue
     :: forall slot r' i m a
      . IsSymbol slot
     => Row.Cons slot NodeSlot r' Slots
-    => NodeMode
+    => GraphStatus
+    -> NodeMode
     -> Geometry
     -> Config a
     -> Proxy slot
@@ -396,16 +411,18 @@ _renderValue
     -> Path
     -> a
     -> GraphHtml m i
-_renderValue NodeWithLabel geom config _ _ status pos nodePath value =
+_renderValue gstatus NodeWithLabel geom config _ _ status pos nodePath value =
     HS.g
         []
         [ HS.circle
             [ HSA.cx pos.x
             , HSA.cy pos.y
             , HSA.r geom.valueRadius
-            , HSA.fill $ config.valueColor nodePath value
-            , HSA.stroke $ _strokeFromStatus status
-            , HSA.strokeWidth $ _strokeWidthFromStatus status
+            , HSA.fill          $ config.valueColor nodePath value
+            , HSA.stroke        $ _strokeFromStatus status
+            , HSA.strokeWidth   $ _strokeWidthFromStatus status
+            , HSA.fillOpacity   $ _nodeOpacity gstatus status
+            , HSA.strokeOpacity $ _nodeOpacity gstatus status
             ]
         , HS.rect
             [ HSA.fill $ Style.blA Light
@@ -434,25 +451,27 @@ _renderValue NodeWithLabel geom config _ _ status pos nodePath value =
             [ HH.text $ config.valueLabel nodePath value
             ]
         ]
-_renderValue JustNode geom config _ _ status pos nodePath value =
+_renderValue gstatus JustNode geom config _ _ status pos nodePath value =
     HS.g
         []
         [ HS.circle
             [ HSA.cx pos.x
             , HSA.cy pos.y
             , HSA.r geom.valueRadius
-            , HSA.fill $ config.valueColor nodePath value
-            , HSA.stroke $ _strokeFromStatus status
-            , HSA.strokeWidth $ _strokeWidthFromStatus status
+            , HSA.fill          $ config.valueColor nodePath value
+            , HSA.stroke        $ _strokeFromStatus status
+            , HSA.strokeWidth   $ _strokeWidthFromStatus status
+            , HSA.fillOpacity   $ _nodeOpacity gstatus status
+            , HSA.strokeOpacity $ _nodeOpacity gstatus status
             ]
         ]
-_renderValue Component _ _ _ Nothing status pos _ _ =
+_renderValue gstatus Component _ _ _ Nothing status pos _ _ =
     HS.text
         [ HSA.x pos.x, HSA.y pos.y
         , HSA.fill $ HSA.RGB 0 0 0
         ]
         [ HH.text "NO COMPONENT" ]
-_renderValue Component _ _ pslot (Just childComp) status pos nodePath value =
+_renderValue gstatus Component _ _ pslot (Just childComp) status pos nodePath value =
     HS.g
         [ HSA.transform $ pure $ HSA.Translate pos.x pos.y ]
         $ pure
@@ -485,3 +504,46 @@ _strokeWidthFromStatus  = case _ of
   Selected -> 3.0
   KeysNext -> 2.0
   _ -> 1.0
+
+
+_nodeOpacity :: GraphStatus -> NodeStatus -> Number
+_nodeOpacity GNormal _ = 1.0
+_nodeOpacity GKeysFocus FocusRoot = 0.6
+_nodeOpacity GKeysFocus KeysFocus = 1.0
+_nodeOpacity GKeysFocus KeysNext = 1.0
+_nodeOpacity GKeysFocus Selected = 1.0
+_nodeOpacity GKeysFocus _ = 0.4
+_nodeOpacity GHoverFocus FocusRoot = 1.0
+_nodeOpacity GHoverFocus KeysFocus = 0.7
+_nodeOpacity GHoverFocus KeysNext = 0.7
+_nodeOpacity GHoverFocus Selected = 1.0
+_nodeOpacity GHoverFocus _ = 0.5
+_nodeOpacity GGhostFocus _ = 1.0
+
+
+_oneOf :: NodeStatus -> EdgeStatus -> Boolean
+_oneOf ns { start, end } = ns == start || ns == end
+
+_startOf :: NodeStatus -> EdgeStatus -> Boolean
+_startOf ns { start } = ns == start
+
+_endOf :: NodeStatus -> EdgeStatus -> Boolean
+_endOf ns { start } = ns == start
+
+
+_edgeOpacity :: GraphStatus -> EdgeStatus -> Number
+_edgeOpacity GNormal _ = 1.0
+_edgeOpacity GKeysFocus estatus | _oneOf KeysFocus estatus = 1.0
+_edgeOpacity GKeysFocus estatus | _oneOf Selected estatus = 1.0
+_edgeOpacity GKeysFocus estatus | _startOf KeysNext estatus = 0.6
+_edgeOpacity GKeysFocus estatus | _endOf KeysNext estatus = 1.0
+_edgeOpacity GKeysFocus estatus | _oneOf FocusRoot estatus = 0.3
+_edgeOpacity GKeysFocus _ = 0.1
+_edgeOpacity GHoverFocus estatus | _oneOf HoverFocus estatus = 1.0
+_edgeOpacity GHoverFocus estatus | _oneOf HoverGhost estatus = 1.0
+_edgeOpacity GHoverFocus estatus | _oneOf Selected estatus = 1.0
+_edgeOpacity GHoverFocus estatus | _oneOf FocusRoot estatus = 0.3
+_edgeOpacity GHoverFocus estatus | _oneOf KeysFocus estatus = 0.3
+_edgeOpacity GHoverFocus estatus | _oneOf KeysNext estatus = 0.3
+_edgeOpacity GHoverFocus _ = 0.1
+_edgeOpacity GGhostFocus _ = 1.0
