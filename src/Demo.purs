@@ -50,7 +50,7 @@ import Web.HTML.Window (toEventTarget, innerWidth, innerHeight) as Window
 
 
 demoTree :: Tree DemoItem
-demoTree = myTree
+demoTree = lettersNumbers -- myTree, simpleTree, manyItems
 
 
 main :: Effect Unit
@@ -176,8 +176,11 @@ lettersNumbers :: Tree DemoItem
 lettersNumbers =
   ss "all" :<
     [ ss "numbers" :<~ (ii <$> [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 ])
-    , ss "a-d"     :< ([ ss "a" :<~ aVars , q $ ss "b", ss "c" :<~ cVars, ss "d" :<~ dVars ])
+    , ss "a-d"     :< ([ ss "a" :<~ aVars, q $ ss "b", ss "c" :<~ cVars, ss "d" :<~ dVars ])
     , ss "e-j"     :< ([ ss "e" :<~ eVars, q $ ss "f", ss "g" :<~ gVars, ss "h" :<~ hVars, ss "i" :<~ iVars, q $ ss "j" ])
+    , ss "k-o"     :< ([ ss "k" :<~ kVars, ss "l" :<~ lVars, q $ ss "m", ss "n" :<~ nVars, ss "o" :<~ oVars ])
+    , ss "p-u"     :< ([ q $ ss "p", q $ ss "q", ss "r" :<~ rVars, ss "s" :<~ sVars, ss "t" :<~ tVars, ss "u" :<~ uVars ])
+    , ss "v-z"     :< ([ q $ ss "v", ss "w" :<~ wVars, q $ ss "x", ss "y" :<~ yVars, ss "z" :<~ zVars ])
     ]
   where
     aVars = ss <$> [ "à", "á", "â", "ä", "ǎ", "æ", "ã", "å", "ā" ]

@@ -22,7 +22,7 @@ import Data.Int (toNumber) as Int
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Graph (Graph, Edge)
 import Data.Graph (toMap, fromMap, lookup) as Graph
-import Data.Map (empty, lookup, insert) as Map
+import Data.Map (empty, lookup, insert, update) as Map
 import Data.Array (fromFoldable, toUnfoldable) as Array
 import Data.Tuple (fst, snd) as Tuple
 import Data.List (List(..))
@@ -33,9 +33,9 @@ import Data.Tuple.Nested ((/\), type (/\))
 import Data.Bifunctor (lmap)
 
 import Yoga.Tree.Extended.Path (Path)
-import Yoga.Tree.Extended.Path (lastPos) as Path
+import Yoga.Tree.Extended.Path (up, lastPos) as Path
 
-import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale)
+import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale, rotateBy)
 import Yoga.Tree.Svg.Style as Style
 import Yoga.Tree.Svg.Style (Mode(..))
 
@@ -111,6 +111,20 @@ distributePositions geom getSize graph =
             findPosition geom.baseDistance parentPos 0.0 (2.0 * Number.pi / 3.0)
         injectRect value pos size =
             { x : pos.x, y : pos.y, width : size.width, height : size.height, value }
+        calcTheta rotData =
+            let
+                angleStart = -1.0 * (total / 2.0)
+                angleEnd   =  1.0 * (total / 2.0)
+                total = neighNum * (Number.pi / 10.0)
+                neighNum = Int.toNumber rotData.neighbours
+                posNum = Int.toNumber rotData.pos
+            in -1.0 * (angleStart + (posNum / (neighNum - 1.0)) * total)
+
+        inParent :: Path -> { neighbours :: Int, pos :: Int }
+        inParent path =
+            { neighbours : Map.lookup (Path.up path) graphMap <#> Tuple.snd <#> List.length # fromMaybe 0
+            , pos : Path.lastPos path # fromMaybe (-1)
+            }
 
         fillBackChildren :: PositionedMap a -> PositionedGraphMap a
         fillBackChildren = mapWithIndex \path cell -> cell /\ (Map.lookup path graphMap <#> Tuple.snd # fromMaybe Nil)
@@ -118,13 +132,16 @@ distributePositions geom getSize graph =
         distribute :: Path /\ a /\ List Path -> PositionedMap a -> PositionedMap a
         distribute (curPath /\ curValue /\ childPaths) prevPositions =
             case prevPositions # Map.lookup curPath of
-                Just { x, y } ->
+                Nothing -> -- we didn't visit `curPath` as a child of some other node: it's probably a root node
                     prevPositions
+                            # storeRect curPath curValue zeroPos (getSize curPath curValue)
+                            # positionChildrenFrom zeroPos childPaths -- for now, position children from zero position
+                Just { x, y } -> -- we did located `curPath` as a child of some other node before, we can position its chidren relatively
+                    let
+                        rotData = inParent curPath
+                    in prevPositions
                         # positionChildrenFrom { x, y } childPaths
-                Nothing ->
-                    prevPositions
-                        # storeRect curPath curValue zeroPos (getSize curPath curValue)
-                        # positionChildrenFrom zeroPos childPaths
+                        # rotateAll { x, y } (calcTheta rotData) childPaths
 
         storeRect :: Path -> a -> Position -> Size -> PositionedMap a -> PositionedMap a
         storeRect path value position size =
@@ -133,6 +150,20 @@ distributePositions geom getSize graph =
         positionChildrenFrom :: Position -> List Path -> PositionedMap a -> PositionedMap a
         positionChildrenFrom parentPos childPaths =
             foldl' (flip $ insertChildPos parentPos $ List.length childPaths) $ mapWithIndex (/\) (List.reverse childPaths)
+
+        rotateAll :: Position -> Number -> List Path -> PositionedMap a -> PositionedMap a
+        rotateAll parentPos theta childPaths =
+            foldl'
+                (\positions chPath ->
+                    Map.update
+                        (\rec ->
+                            let
+                                rotated = rotateBy parentPos { x : rec.x, y : rec.y  } 1.0 theta
+                            in Just $ rec { x = rotated.x, y = rotated.y }
+                        )
+                        chPath
+                        positions)
+                childPaths
 
         insertChildPos :: Position -> Int -> Int /\ Path -> PositionedMap a -> PositionedMap a
         insertChildPos parentPos childrenCount (index /\ childPath) prevPositions =
