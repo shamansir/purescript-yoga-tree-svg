@@ -10,7 +10,7 @@ import Effect.Class (class MonadEffect)
 import Effect.Console (log) as Console
 
 import Data.Array ((:))
-import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse) as Array
+import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse, replicate) as Array
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Graph (Graph)
 import Data.Graph (fromMap, toMap) as Graph
@@ -42,7 +42,7 @@ import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path (find, root, toArray, depth, advance, safeAdvance, Dir(..), advanceDir, isNextFor) as Path
 import Yoga.Tree.Extended.Convert as TreeConv
-import Yoga.Tree.Svg.Render (WithStatus)
+import Yoga.Tree.Svg.Render (WithStatus, statusColor)
 import Yoga.Tree.Svg.Render as SvgTree
 import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
 import Yoga.Tree.Svg.SvgItem (toText, fromText, default) as SvgI
@@ -269,6 +269,7 @@ component' modes config mbChildComp =
           [ HH.text "\"+\" to slightly zoom in"
           , HH.text "\"-\" to slightly zoom out"
           , HH.text "\"=\" to reset zoom"
+          , HH.text $ if Array.length state.history > 1 then "<Beckspace> to navigate one step back in history" else ""
           ]
           <>
           case state.selection of
@@ -350,10 +351,16 @@ component' modes config mbChildComp =
             , HP.rows 50
             , HP.cols 50
             , HE.onValueChange TryParse
-            , HE.onFocusIn $ const PauseListeningKeys
+            , HE.onFocusIn  $ const PauseListeningKeys
             , HE.onFocusOut $ const ResumeListeningKeys
             ]
           ]
+
+      {- FoldRep Rep -}
+      , renderIfEnabled FoldTree $ HH.div
+          [ HP.style $ Style.foldRepBox ]
+           $  foldRepLine
+          <$> foldRepLines
 
       {- JSON Rep -}
       , renderIfEnabled JsonOutput $ HH.div
@@ -374,7 +381,27 @@ component' modes config mbChildComp =
         if Set.member element state.elements then
           comp
         else
-          HH.div [] [ ]
+          HH.div [] []
+
+      foldRepLines =
+        TreeConv.toPathLines (TreeConv.modeToF TreeConv.Indent)
+           $ SvgI.toText
+          <$> state.tree
+
+      foldRepLine (path /\ str) =
+        HH.div
+          [ HP.style
+              $ Style.foldRepLine
+              $ statusColor
+              $ statusOf state path
+          ]
+          $  Array.replicate
+                (Path.depth path)
+                (HH.span
+                  [ HP.style Style.foldRepIndent ]
+                  [ HH.text "o" ]
+                )
+          <> [ HH.span [] [ HH.text str ] ]
 
   wrapPinUnpin config allowGo pinned tree nodePath =
     HH.div

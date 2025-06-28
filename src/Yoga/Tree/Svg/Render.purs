@@ -6,7 +6,7 @@ module Yoga.Tree.Svg.Render
     , NodeComponent, NodeComponentInput, GraphHtml
     , renderGraph, renderGraph_, renderGraph'
     , renderPreview, renderPreview_, renderPreview'
-    , WithStatus
+    , WithStatus, statusColor
     )
     where
 
@@ -343,6 +343,17 @@ renderPreview' nodeMode geom config mbComponent nodeStatus nodePath value =
                 $ pure
                 $ _renderValue GNormal nodeMode geom config _preview mbComponent nodeStatus position nodePath value
             ]
+
+
+statusColor :: NodeStatus -> HSA.Color
+statusColor = case _ of
+  Normal -> HSA.RGBA 0 0 0 0.0
+  FocusRoot -> Style.alpha 0.6 $ Style.reA Light
+  HoverFocus -> Style.alpha 0.6 $ Style.grB Light
+  HoverGhost -> Style.alpha 0.6 $ Style.grA Light
+  Selected -> Style.alpha 0.6 $ Style.blB Light
+  KeysNext -> Style.alpha 0.6 $ Style.blA Light
+  _ -> HSA.RGBA 0 0 0 0.0
 
 
 type EdgeJoint a =
