@@ -35,6 +35,7 @@ import Web.HTML.HTMLDocument as HTMLDocument
 import Web.HTML.Window (document, history)
 import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
+import Web.UIEvent.MouseEvent as ME
 import Web.UIEvent.WheelEvent as WE
 import Web.Event.Event as E
 
@@ -71,6 +72,7 @@ data Action a
     | EnterTextMode
     | LeaveTextMode
     | SwitchExport ExportMode
+    | FoldSelect ME.MouseEvent Path
 
 
 data PathMode
@@ -401,12 +403,12 @@ component' modes config mbChildComp =
             ]
           , HH.div
             []
-            [ _qbutton "JSON" $ SwitchExport Json
-            , _qbutton "Indent" $ SwitchExport $ Text TreeConv.Indent
-            , _qbutton "Dashes" $ SwitchExport $ Text TreeConv.Dashes
-            , _qbutton "Corners" $ SwitchExport $ Text TreeConv.Corners
-            , _qbutton "Paths" $ SwitchExport $ Text TreeConv.Paths
-            , _qbutton "Lines" $ SwitchExport $ Text TreeConv.Lines
+            [ _qbutton "JSON"      $ SwitchExport Json
+            , _qbutton "Indent"    $ SwitchExport $ Text TreeConv.Indent
+            , _qbutton "Dashes"    $ SwitchExport $ Text TreeConv.Dashes
+            , _qbutton "Corners"   $ SwitchExport $ Text TreeConv.Corners
+            , _qbutton "Paths"     $ SwitchExport $ Text TreeConv.Paths
+            , _qbutton "Lines"     $ SwitchExport $ Text TreeConv.Lines
             , _qbutton "Triangles" $ SwitchExport $ Text TreeConv.Triangles
             ]
           ]
@@ -433,6 +435,7 @@ component' modes config mbChildComp =
               $ Style.foldRepLine
               $ statusColor
               $ statusOf state path
+          , HE.onClick $ flip FoldSelect path
           ]
           $  Array.replicate
                 (Path.depth path)
@@ -534,6 +537,9 @@ component' modes config mbChildComp =
       H.modify_ _ { treeTextMode = false, editingTreeText = false }
     SwitchExport emode ->
       H.modify_ _ { exportMode = emode }
+    FoldSelect mevt path -> do
+      H.liftEffect $ E.stopPropagation $ ME.toEvent mevt
+      H.modify_ _ { selection = Just path }
 
   handleKey key | key == "+" = H.modify_ \s -> s { zoom = s.zoom + 0.1 }
   handleKey key | key == "-" = H.modify_ \s -> s { zoom = s.zoom - 0.1 }
