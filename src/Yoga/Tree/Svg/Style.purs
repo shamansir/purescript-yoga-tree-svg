@@ -132,9 +132,11 @@ previewNone = "position: absolute; right: 0; top: 100px" :: String
 pinnedBox = "position: absolute; right: 0; top: 200px;" :: String
 historyBox = "position: absolute; right: 0; top: 600px; user-select: none; padding: 10px; border: 1px solid rgb(190,190,190); margin: 5px 10px 5px 5px;" :: String
 textEditBox = "position: absolute; right: 220px; bottom: 200px; user-select: none;" :: String
-foldRepBox = "position: absolute; right: 220px; bottom: 200px; user-select: none; max-height: 700px; overflow: scroll;" :: String
+foldRepBox = "position: absolute; right: 299px; bottom: 192px; user-select: none; overflow: scroll; width: 250px; max-width: 250px; height: 650px;" :: String
 foldRepLine :: HSA.Color -> String
 foldRepLine c = "display: block; background-color: " <> pc c <> ";"
+foldRepColumn :: Int -> String
+foldRepColumn n = "position: absolute; top: 0; left: " <> show (n * 100) <> "px;"
 foldRepIndent = "display: inline-block; width: 10px; min-width: 10px; opacity: 0.3; color: lightgray;" :: String
 jsonRepBox = "position: absolute; right: 220px; bottom: 50px; user-select: none;" :: String
 button   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0 2px; border-radius: 5px; border: 1px solid black; font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;" :: String

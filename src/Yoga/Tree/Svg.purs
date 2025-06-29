@@ -10,7 +10,8 @@ import Effect.Class (class MonadEffect)
 import Effect.Console (log) as Console
 
 import Data.Array ((:))
-import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse, replicate) as Array
+import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse, replicate, groupBy) as Array
+import Data.Array.NonEmpty as NEA
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Graph (Graph)
 import Data.Graph (fromMap, toMap) as Graph
@@ -18,6 +19,7 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
 import Data.Set (empty, insert, delete, isEmpty, member, fromFoldable) as Set
 import Data.String (take, toLower) as String
+import Data.Tuple (fst, snd) as Tuple
 import Data.Tuple.Nested ((/\))
 
 import Halogen as H
@@ -66,6 +68,8 @@ data Action a
     | TryParse String
     | PauseListeningKeys
     | ResumeListeningKeys
+    | EnterTextMode
+    | LeaveTextMode
 
 
 data PathMode
@@ -121,6 +125,7 @@ type State a =
     , zoom :: Number
     , size :: { width :: Number, height :: Number }
     , selection :: Maybe Path
+    , treeTextMode :: Boolean
     , editingTreeText :: Boolean
     , elements :: Set Element
     , mode :: Style.Mode
@@ -169,6 +174,7 @@ component' modes config mbChildComp =
     , preview : None
     , pinned : Set.empty
     , selection : Nothing
+    , treeTextMode : false
     , editingTreeText : false
     , elements
     , mode
@@ -342,25 +348,35 @@ component' modes config mbChildComp =
           <$> Array.reverse state.history
 
       {- String Rep -}
-      , renderIfEnabled TextEdit $ HH.div
-          [ HP.style $ Style.textEditBox
-          ]
-          [ HH.textarea
-            [ HP.style Style.textarea
-            , HP.value $ TreeConv.toString TreeConv.Indent SvgI.toText state.tree
-            , HP.rows 50
-            , HP.cols 50
-            , HE.onValueChange TryParse
-            , HE.onFocusIn  $ const PauseListeningKeys
-            , HE.onFocusOut $ const ResumeListeningKeys
+      , if state.treeTextMode then
+          renderIfEnabled TextEdit $ HH.div
+            [ HP.style $ Style.textEditBox
             ]
-          ]
+            [ HH.textarea
+              [ HP.style Style.textarea
+              , HP.value $ TreeConv.toString TreeConv.Indent SvgI.toText state.tree
+              , HP.rows 50
+              , HP.cols 50
+              , HE.onValueChange TryParse
+              , HE.onFocusIn  $ const PauseListeningKeys
+              , HE.onFocusOut $ const ResumeListeningKeys
+              ]
+            ]
+        else HH.div [] []
 
       {- FoldRep Rep -}
-      , renderIfEnabled FoldTree $ HH.div
-          [ HP.style $ Style.foldRepBox ]
-           $  foldRepLine
-          <$> foldRepLines
+      , if not state.treeTextMode then
+          renderIfEnabled FoldTree
+            $ HH.div
+              [ HP.style $ Style.foldRepBox
+              , HE.onClick $ const EnterTextMode
+              ]
+               $ mapWithIndex foldRepColumn
+              <$> splitBy 50
+               $  foldRepLine
+              <$> foldRepLines
+        else
+          HH.div [] []
 
       {- JSON Rep -}
       , renderIfEnabled JsonOutput $ HH.div
@@ -383,9 +399,12 @@ component' modes config mbChildComp =
         else
           HH.div [] []
 
-      foldRepLines =
-        TreeConv.toPathLines (TreeConv.modeToF TreeConv.Indent)
-           $ SvgI.toText
+      foldRepColumn colN =
+        HH.div [ HP.style $ Style.foldRepColumn colN ]
+
+      foldRepLines
+           =  TreeConv.toPathLines (TreeConv.modeToF TreeConv.Indent)
+           $  SvgI.toText
           <$> state.tree
 
       foldRepLine (path /\ str) =
@@ -402,6 +421,13 @@ component' modes config mbChildComp =
                   [ HH.text "o" ]
                 )
           <> [ HH.span [] [ HH.text str ] ]
+
+  splitBy :: forall b. Int -> Array b -> Array (Array b)
+  splitBy n =
+    mapWithIndex (\idx a -> idx `div` n /\ a)
+      >>> Array.groupBy (\a b -> Tuple.fst a == Tuple.fst b)
+      >>> map NEA.toArray
+      >>> map (map Tuple.snd)
 
   wrapPinUnpin config allowGo pinned tree nodePath =
     HH.div
@@ -482,6 +508,10 @@ component' modes config mbChildComp =
       H.modify_ _ { editingTreeText = true }
     ResumeListeningKeys ->
       H.modify_ _ { editingTreeText = false }
+    EnterTextMode ->
+      H.modify_ _ { treeTextMode = true }
+    LeaveTextMode ->
+      H.modify_ _ { treeTextMode = false, editingTreeText = false }
 
   handleKey key | key == "+" = H.modify_ \s -> s { zoom = s.zoom + 0.1 }
   handleKey key | key == "-" = H.modify_ \s -> s { zoom = s.zoom - 0.1 }
@@ -501,7 +531,12 @@ component' modes config mbChildComp =
   handleKey key | key == "*" = H.modify_ $ updateFocus Path.root
   handleKey key | String.toLower key == "tab" = H.modify_ $ updateFocus Path.root
   handleKey key | String.toLower key == "escape" =
-      H.modify_ \s -> s { selection = Nothing, preview = None }
+      H.modify_ \s -> s
+        { selection = Nothing
+        , preview = None
+        , treeTextMode = false
+        , editingTreeText = false
+        }
   handleKey key | String.toLower key == "backspace" =
       H.modify_ \s ->
         case s.history of
