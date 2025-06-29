@@ -70,6 +70,7 @@ data Action a
     | ResumeListeningKeys
     | EnterTextMode
     | LeaveTextMode
+    | SwitchExport ExportMode
 
 
 data PathMode
@@ -88,10 +89,15 @@ data Element
     | History
     | Pinned
     | TextEdit
-    | JsonOutput
+    | Export
     | Hints
     | ZoomControls
     | FoldTree
+
+
+data ExportMode
+    = Json
+    | Text TreeConv.Mode
 
 
 derive instance Eq Element
@@ -99,7 +105,7 @@ derive instance Ord Element
 
 
 allElements :: Set Element
-allElements = Set.fromFoldable [ Preview, History, Pinned, TextEdit, JsonOutput, Hints, ZoomControls, FoldTree ]
+allElements = Set.fromFoldable [ Preview, History, Pinned, TextEdit, Export, Hints, ZoomControls, FoldTree ]
 
 
 type Input a =
@@ -129,6 +135,7 @@ type State a =
     , editingTreeText :: Boolean
     , elements :: Set Element
     , mode :: Style.Mode
+    , exportMode :: ExportMode
     }
 
 
@@ -178,6 +185,7 @@ component' modes config mbChildComp =
     , editingTreeText : false
     , elements
     , mode
+    , exportMode : Json
     }
 
   receive :: Input a -> State a -> State a
@@ -379,15 +387,27 @@ component' modes config mbChildComp =
           HH.div [] []
 
       {- JSON Rep -}
-      , renderIfEnabled JsonOutput $ HH.div
+      , renderIfEnabled Export $ HH.div
           [ HP.style $ Style.jsonRepBox
           ]
           [ HH.textarea
             [ HP.style Style.textarea
-            , HP.value $ TreeConv.writeJSON state.tree
+            , HP.value $ case state.exportMode of
+                  Json -> TreeConv.writeJSON state.tree
+                  Text tmode -> TreeConv.toString tmode SvgI.toText state.tree
             , HP.readOnly true
             , HP.rows 10
             , HP.cols 50
+            ]
+          , HH.div
+            []
+            [ _qbutton "JSON" $ SwitchExport Json
+            , _qbutton "Indent" $ SwitchExport $ Text TreeConv.Indent
+            , _qbutton "Dashes" $ SwitchExport $ Text TreeConv.Dashes
+            , _qbutton "Corners" $ SwitchExport $ Text TreeConv.Corners
+            , _qbutton "Paths" $ SwitchExport $ Text TreeConv.Paths
+            , _qbutton "Lines" $ SwitchExport $ Text TreeConv.Lines
+            , _qbutton "Triangles" $ SwitchExport $ Text TreeConv.Triangles
             ]
           ]
 
@@ -512,6 +532,8 @@ component' modes config mbChildComp =
       H.modify_ _ { treeTextMode = true }
     LeaveTextMode ->
       H.modify_ _ { treeTextMode = false, editingTreeText = false }
+    SwitchExport emode ->
+      H.modify_ _ { exportMode = emode }
 
   handleKey key | key == "+" = H.modify_ \s -> s { zoom = s.zoom + 0.1 }
   handleKey key | key == "-" = H.modify_ \s -> s { zoom = s.zoom - 0.1 }
