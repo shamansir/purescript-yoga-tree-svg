@@ -3,6 +3,7 @@ module Demo where
 import Prelude
 
 import Debug as Debug
+import Effect.Console (log) as Console
 
 import Foreign (F)
 
@@ -43,7 +44,8 @@ import Yoga.JSON (class WriteForeign, class ReadForeign, readImpl, writeImpl)
 
 import Web.Event.Event as E
 import Web.HTML (window) as Web
-import Web.HTML.Window (toEventTarget, innerWidth, innerHeight) as Window
+import Web.HTML.Window (toEventTarget, innerWidth, innerHeight, location) as Window
+import Web.HTML.Location (hash) as Location
 -- import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 -- import Web.UIEvent.KeyboardEvent as KE
 -- import Web.UIEvent.KeyboardEvent.EventTypes as KET
@@ -76,11 +78,18 @@ _tree  = Proxy :: _ "tree"
 data Action
   = Initialize
   | HandleResize
+  | HandleHashChange
 
 
 data DemoItem
   = IntItem Int
   | StrItem String
+
+
+data Example
+  = SimpleTree
+  | LettersNumbers
+  | ManyItems
 
 
 ii :: Int -> DemoItem
@@ -244,7 +253,7 @@ modes =
   }
 
 
-component ∷ ∀ a query input output m. MonadEffect m => IsSvgTreeItem a => Tree a -> H.Component query input output m
+component ∷ ∀ query input output m. MonadEffect m => Tree DemoItem -> H.Component query input output m
 component startFromTree =
   H.mkComponent
     { initialState
@@ -255,14 +264,14 @@ component startFromTree =
       }
     }
   where
-  initialState :: input -> State a
+  initialState :: input -> State DemoItem
   initialState _ = { tree : startFromTree, window : Nothing }
 
   defaultSize = { width : 1000.0, height : 1000.0 }
 
   reduceSize { width, height } = { width : width - 10.0, height : height - 10.0 }
 
-  render :: forall action. State a -> H.ComponentHTML action Slots m
+  render :: forall action. State DemoItem -> H.ComponentHTML action Slots m
   render state =
     HH.slot_ _tree unit
       (YST.component_ modes config child)
@@ -272,7 +281,7 @@ component startFromTree =
       , mode : YST.Light
       }
 
-  child :: YST.NodeComponent m a
+  child :: YST.NodeComponent m DemoItem
   child = H.mkComponent
     { initialState : identity
     , render : childString >>> HH.text >>> pure >>> HS.text [ HSA.fill $ HSA.RGB 0 0 0 ]
@@ -284,17 +293,42 @@ component startFromTree =
 
   handleAction = case _ of
     Initialize -> do
-      handleAction HandleResize
-
       window <- H.liftEffect $ Web.window
+
+      handleAction HandleHashChange
+      handleAction HandleResize
 
       H.subscribe' \_ ->
           eventListener
               (E.EventType "resize")
               (Window.toEventTarget window)
               (E.target >=> (const $ Just HandleResize))
+
+      H.subscribe' \_ ->
+          eventListener
+              (E.EventType "hashchange")
+              (Window.toEventTarget window)
+              (E.target >=> (const $ Just HandleHashChange))
     HandleResize -> do
       window    <- H.liftEffect $ Web.window
       newWidth  <- H.liftEffect $ Window.innerWidth window
       newHeight <- H.liftEffect $ Window.innerHeight window
       H.modify_ $ _ { window = Just { width : Int.toNumber newWidth, height : Int.toNumber newHeight } }
+    HandleHashChange -> do
+      window <- H.liftEffect $ Web.window
+      loc    <- H.liftEffect $ Window.location window
+      hash   <- H.liftEffect $ Location.hash loc
+
+      let
+        example =
+            case hash of
+              "#simple" -> simpleTree
+              "#many" -> manyItems
+              "#my" -> myTree
+              "#init" -> myTree
+              "#letnum" -> lettersNumbers
+              _ -> lettersNumbers
+
+      H.liftEffect $ Console.log hash
+
+      H.modify_ $ _ { tree = example }
