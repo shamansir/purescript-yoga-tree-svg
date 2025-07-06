@@ -24,18 +24,18 @@ import Data.Int (toNumber) as Int
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Graph (Graph, Edge)
 import Data.Graph (toMap, fromMap, lookup) as Graph
-import Data.Map (empty, lookup, insert, update) as Map
+import Data.Map (empty, lookup, insert, update, filterKeys) as Map
 import Data.Array (fromFoldable, toUnfoldable) as Array
 import Data.Tuple (fst, snd) as Tuple
 import Data.List (List(..))
-import Data.List (length, reverse) as List
+import Data.List (length, reverse, filter, take) as List
 import Data.Foldable (class Foldable, foldl)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Tuple.Nested ((/\), type (/\))
 import Data.Bifunctor (lmap)
 
 import Yoga.Tree.Extended.Path (Path)
-import Yoga.Tree.Extended.Path (up, lastPos) as Path
+import Yoga.Tree.Extended.Path (up, lastPos, depth, startsWith) as Path
 
 import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale, rotateBy)
 import Yoga.Tree.Svg.Style as Style
@@ -102,14 +102,15 @@ data NodeStatus
 
 data SoftLimit
     = Infinite
-    | Maximum Number
+    | Maximum Int
 
 
 data Visibility a
     = AllVisible a
     | DepthLimitReached a
-    | ChildrenBefore Int a
-    | ChidlrenAfter Int a
+    | ChildrenLimitReached Int a
+    -- | ChildrenBefore Int a
+    -- | ChidlrenAfter Int a
 
 
 derive instance Eq NodeStatus
@@ -122,7 +123,7 @@ foldl' = flip <<< foldl
 distributePositions :: forall a. Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned (Visibility a))
 distributePositions geom getSize graph =
     graphMap
-        # mapWithIndex ((/\))
+        # addPathsToValues
         # reduceVisibilityIfNeeded
         # foldl (flip distribute) Map.empty
         # fillBackChildren
@@ -145,11 +146,15 @@ distributePositions geom getSize graph =
                 posNum = Int.toNumber rotData.pos
             in -1.0 * (angleStart + (posNum / (neighNum - 1.0)) * total)
 
-        insertIndices :: Map Path (a /\ List Path) -> Map Path (Path /\ a /\ List Path)
-        insertIndices = mapWithIndex ((/\))
+        addPathsToValues :: Map Path (a /\ List Path) -> Map Path (Path /\ a /\ List Path)
+        addPathsToValues = mapWithIndex ((/\))
 
         reduceVisibilityIfNeeded :: Map Path (Path /\ a /\ List Path) -> Map Path (Path /\ Visibility a /\ List Path)
-        reduceVisibilityIfNeeded = map $ map $ lmap AllVisible -- TODO
+        reduceVisibilityIfNeeded = case geom.depthLimit /\ geom.childrenLimit of
+            Infinite /\ Infinite -> map $ map $ lmap AllVisible
+            Infinite /\ Maximum chLimit -> applyChidrenLimit chLimit identity
+            Maximum dLimit /\ Infinite -> applyDepthLimit dLimit identity
+            Maximum dLimit /\ Maximum chLimit -> applyChidrenLimit chLimit joinVis <<< applyDepthLimit dLimit identity
 
         inParent :: Path -> { neighbours :: Int, pos :: Int }
         inParent path =
@@ -204,6 +209,25 @@ distributePositions geom getSize graph =
                         # storeRect childPath (AllVisible childValue) (childPos parentPos childrenCount index) (getSize childPath childValue)
                 Nothing ->
                     prevPositions
+
+        applyDepthLimit :: forall x y. Int -> (Visibility x -> y) -> Map Path (Path /\ x /\ List Path) -> Map Path (Path /\ y /\ List Path)
+        applyDepthLimit dLimit f = map processVal <<< Map.filterKeys notTooDeep
+            where
+                notTooDeep path = Path.depth path <= dLimit
+                checkVDepth :: x -> Path -> Visibility x
+                checkVDepth x path | Path.depth path == dLimit = DepthLimitReached x
+                checkVDepth x _    | otherwise = AllVisible x
+                processVal :: Path /\ x /\ List Path -> Path /\ y /\ List Path
+                processVal (path /\ x /\ xs) = path /\ (f $ checkVDepth x path) /\ List.filter notTooDeep xs
+
+        applyChidrenLimit :: forall x y. Int -> (Visibility x -> y) -> Map Path (Path /\ x /\ List Path) -> Map Path (Path /\ y /\ List Path)
+        applyChidrenLimit chLimit f = map $ map checkChCount
+            where
+                checkChCount :: x /\ List Path -> y /\ List Path
+                checkChCount (x /\ xs) | List.length xs <= chLimit = (f $ AllVisible x) /\ xs
+                checkChCount (x /\ xs) | otherwise                 = (f $ ChildrenLimitReached chLimit x) /\ List.take chLimit xs
+
+
 
 
 type RenderConfig a =
@@ -646,5 +670,13 @@ fromVis :: forall a. Visibility a -> a
 fromVis = case _ of
     AllVisible a -> a
     DepthLimitReached a -> a
-    ChildrenBefore _ a -> a
-    ChidlrenAfter _ a -> a
+    ChildrenLimitReached _ a -> a
+    -- ChildrenBefore _ a -> a
+    -- ChidlrenAfter _ a -> a
+
+
+joinVis :: forall a. Visibility (Visibility a) -> Visibility a
+joinVis (ChildrenLimitReached n vis) = ChildrenLimitReached n $ fromVis vis
+joinVis (DepthLimitReached (AllVisible a)) = DepthLimitReached a
+joinVis (DepthLimitReached vis) = DepthLimitReached $ fromVis vis -- vis
+joinVis (AllVisible vis) = vis
