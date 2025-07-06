@@ -37,8 +37,8 @@ import Yoga.Tree.Extended as Tree
 import Yoga.Tree.Svg (NodeComponent, component_, all) as YST
 import Yoga.Tree.Svg.Render (Modes, RenderConfig, NodeMode(..), EdgeMode(..)) as YST
 import Yoga.Tree.Svg.Style (Theme(..), tx, tx2, tx3) as YST
-import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
-import Yoga.Tree.Svg.SvgItem (toText) as YSTI
+import Yoga.Tree.Svg.SvgItem (class IsTreeItem, class IsSvgTreeItem)
+import Yoga.Tree.Svg.SvgItem as YSTI
 import Yoga.JSON (class WriteForeign, class ReadForeign, readImpl, writeImpl)
 
 import Web.Event.Event as E
@@ -215,10 +215,13 @@ instance Show DemoItem where
   show = case _ of
     IntItem n -> show n
     StrItem str -> str
-instance IsSvgTreeItem DemoItem where
-  toText = show
-  fromText = Int.fromString >>= maybe (StrItem >>> Just) (\n _ -> Just $ IntItem n)
+instance IsTreeItem DemoItem where
   default = IntItem $ -1
+  _export = show
+  _import = Int.fromString >>= maybe (StrItem >>> Just) (\n _ -> Just $ IntItem n)
+instance IsSvgTreeItem DemoItem where
+  foldLabel = show
+  pinnedLine = const show
 
 
 instance WriteForeign DemoItem where
@@ -234,7 +237,7 @@ config :: forall a. IsSvgTreeItem a => YST.RenderConfig a
 config =
   { edgeColor : \theme _ _ _ _ -> YST.tx theme
   , edgeLabel : \_ _ _ _ -> "E"
-  , valueLabel : const YSTI.toText
+  , valueLabel : const YSTI.foldLabel
   , valueLabelColor : \theme _ _ -> YST.tx2 theme
   , valueLabelWidth : \path -> String.length <<< config.valueLabel path
   , valueColor : \theme _ _ -> YST.tx3 theme
@@ -246,6 +249,7 @@ modes :: YST.Modes
 modes =
   { nodeMode : YST.NodeWithLabel
   , previewMode : YST.Component -- YST.NodeWithLabel
+  , pinMode : YST.NodeWithLabel
   , edgeMode : YST.JustEdge -- EdgeWithLabel
   }
 
@@ -286,7 +290,7 @@ component startFromTree =
     }
 
   childString { path, value } =
-    show path <> " // " <> YSTI.toText value
+    show path <> " // " <> YSTI.foldLabel value
 
   handleAction = case _ of
     Initialize -> do

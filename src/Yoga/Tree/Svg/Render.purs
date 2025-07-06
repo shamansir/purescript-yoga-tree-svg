@@ -69,7 +69,8 @@ type NodeOutput = Void
 
 
 data NodeMode
-    = JustNode
+    = Text
+    | JustNode
     | NodeWithLabel
     | Component
 
@@ -225,6 +226,7 @@ type Modes =
     { nodeMode :: NodeMode
     , edgeMode :: EdgeMode
     , previewMode :: NodeMode
+    , pinMode :: NodeMode
     -- TODO maximum amount of childNodes
     }
 
@@ -541,6 +543,17 @@ _renderValue' th gstatus Component _ _ pslot (Just childComp) status pos nodePat
             , path : nodePath
             , value
             }
+_renderValue' th gtatus Text _ rconfig _ _ _ pos nodePath value =
+    HS.g
+        []
+        [ HS.text
+            [ HSA.fill $ rconfig.valueLabelColor th nodePath value
+            , HSA.x $ pos.x + 6.0
+            , HSA.y $ pos.y + 9.0
+            ]
+            [ HH.text $ rconfig.valueLabel nodePath value
+            ]
+        ]
 
 
 _strokeFromStatus :: Theme -> NodeStatus -> HSA.Color

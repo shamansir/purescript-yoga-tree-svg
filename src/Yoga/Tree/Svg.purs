@@ -18,8 +18,8 @@ import Data.Graph (Graph)
 import Data.Graph (fromMap, toMap) as Graph
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
-import Data.Set (empty, insert, delete, isEmpty, member, fromFoldable) as Set
-import Data.String (take, toLower) as String
+import Data.Set (empty, insert, delete, isEmpty, member, fromFoldable, size) as Set
+import Data.String (take, toLower, joinWith) as String
 import Data.Tuple (fst, snd) as Tuple
 import Data.Tuple.Nested ((/\))
 import Data.Int (floor, toNumber) as Int
@@ -50,7 +50,7 @@ import Yoga.Tree.Extended.Convert as TreeConv
 import Yoga.Tree.Svg.Render (WithStatus, statusColor)
 import Yoga.Tree.Svg.Render as SvgTree
 import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
-import Yoga.Tree.Svg.SvgItem (toText, fromText, default) as SvgI
+import Yoga.Tree.Svg.SvgItem (foldLabel, pinnedLine, _export, _import, default) as SvgI
 import Yoga.Tree.Svg.Style as Style
 import Yoga.Tree.Svg.Layout (Element(..), all) as LayoutEx
 import Yoga.Tree.Svg.Layout as L
@@ -69,17 +69,21 @@ data Action a
     | NodeClick Path a
     | NodeOver  Path a
     | NodeOut   Path a
+    | PreviewOver Path
     | ResetZoom
     | Pin Path
     | UnPin Path
     | TryParse String
     | PauseListeningKeys
     | ResumeListeningKeys
-    | EnterTextMode
-    | LeaveTextMode
+    | EnterTreeTextMode
+    | LeaveTreeTextMode
+    | EnterPinTextMode
+    | LeavePinTextMode
     | SwitchExport ExportMode
     | FoldSelect ME.MouseEvent Path
     | ToggleFoldMode
+    | DoNothing
 
 
 data PathMode
@@ -127,7 +131,8 @@ type State a =
     , size :: { width :: Number, height :: Number }
     , selection :: Maybe Path
     , treeTextMode :: Boolean
-    , editingTreeText :: Boolean
+    , pinnedTextMode :: Boolean
+    , editingSomeText :: Boolean
     , elements :: Set L.Element
     , theme :: Style.Theme
     , exportMode :: ExportMode
@@ -178,7 +183,8 @@ component' modes rconfig mbChildComp =
     , pinned : Set.empty
     , selection : Nothing
     , treeTextMode : false -- is tree text mode enabled
-    , editingTreeText : false -- are we currently editing the tree
+    , pinnedTextMode : false
+    , editingSomeText : false -- are we currently editing any text (to block UI controls)
     , elements
     , theme
     , exportMode : Json
@@ -205,13 +211,13 @@ component' modes rconfig mbChildComp =
     , theme
     }
 
-  previewConfig :: Style.Theme -> SvgTree.ValueConfig a
-  previewConfig = graphConfig >>> SvgTree.toValueConfig >>> _ { nodeMode = modes.previewMode }
+  valueConfig :: SvgTree.NodeMode -> Style.Theme -> SvgTree.ValueConfig a
+  valueConfig nodeMode = graphConfig >>> SvgTree.toValueConfig >>> _ { nodeMode = nodeMode }
 
-  previewAt theme tree previewPath =
+  previewAt theme nodeMode tree previewPath =
     case Path.find previewPath tree of
       Just previewNode ->
-        SvgTree.renderPreview' (previewConfig theme) mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
+        SvgTree.renderPreview' (valueConfig nodeMode theme) mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
 
@@ -321,16 +327,20 @@ component' modes rconfig mbChildComp =
               Focused _   -> Style.previewFocused
               LostFocus _ -> Style.previewBlurred
               None -> Style.previewNone
+            , HE.onMouseOver \_ -> case state.preview of
+                Focused path   -> PreviewOver path
+                LostFocus path -> PreviewOver path
+                _ -> DoNothing
             ]
             $ pure
             $ case state.preview of
                 Focused previewPath ->
                   if not $ Set.member previewPath state.pinned then
-                    wrapPinUnpin state.theme gconfig.render false state.pinned state.tree previewPath
+                    wrapPinUnpin modes.previewMode state.theme gconfig.render false state.pinned state.tree previewPath
                   else HH.text ""
                 LostFocus previewPath ->
                   if not $ Set.member previewPath state.pinned then
-                    wrapPinUnpin state.theme gconfig.render false state.pinned state.tree previewPath
+                    wrapPinUnpin modes.previewMode state.theme gconfig.render false state.pinned state.tree previewPath
                   else HH.text ""
                 None ->
                   HH.text ""
@@ -345,11 +355,45 @@ component' modes rconfig mbChildComp =
 
         {- Current Pinned -}
         L.E L.Pinned ->
-          HH.div
-            [ HP.style $ Style.pinnedBox
+          let
+            pinnedCount = Set.size state.pinned
+            pinnedLabel = if pinnedCount > 0 then show pinnedCount <> " pinned:" else ""
+            -- buttonAction =
+          in HH.div
+            [ HP.style $ Style.pinnedBox lo.rect.size.height
             ]
-            $ wrapPinUnpin state.theme gconfig.render true state.pinned state.tree
-            <$> Array.fromFoldable state.pinned
+             $ HH.div
+                [ HP.style Style.pinnedLabel ]
+                [ HH.text pinnedLabel ]
+
+             : HH.div
+                [ HP.style Style.pinnedEdit ]
+                [ if pinnedCount > 0 then
+                    if not state.pinnedTextMode then
+                      _qbutton "Text" EnterPinTextMode -- $ if state.pinnedTextMode then EnterPinTextMode else LeavePinTextMode
+                    else
+                      _qbutton "Exit" LeavePinTextMode
+                  else HH.text ""
+                ]
+
+             : if not state.pinnedTextMode then
+                  pure $ HH.div_
+                    $ (wrapPinUnpin modes.pinMode state.theme gconfig.render true state.pinned state.tree
+                   <$> Array.fromFoldable state.pinned)
+               else
+                  pure $ HH.div
+                    [ HP.style $ Style.textEditBox
+                    ]
+                    [ HH.textarea
+                      [ HP.style $ Style.textarea state.theme
+                      , HP.value $ String.joinWith "\n" $ pinnedTextLine <$> Array.fromFoldable state.pinned
+                      , HP.rows 15
+                      , HP.cols 50
+                      , HE.onFocusIn  $ const PauseListeningKeys
+                      , HE.onFocusOut $ const ResumeListeningKeys
+                      , HE.onBlur     $ const ResumeListeningKeys
+                      ]
+                    ]
 
         {- Fold // String Rep -}
         L.E L.FoldTreeOrEdit ->
@@ -360,7 +404,7 @@ component' modes rconfig mbChildComp =
               itemsInColumn = Int.floor $ lo.rect.size.height / singleItemHeight
             in HH.div
               [ HP.style $ Style.foldRepBox lo.rect.size
-              , HE.onClick $ const EnterTextMode
+              , HE.onClick $ const EnterTreeTextMode
               ]
               $  mapWithIndex foldRepColumn
              <$> splitBy itemsInColumn
@@ -374,12 +418,13 @@ component' modes rconfig mbChildComp =
               ]
               [ HH.textarea
                 [ HP.style $ Style.textarea state.theme
-                , HP.value $ TreeConv.toString TreeConv.Indent SvgI.toText state.tree
+                , HP.value $ TreeConv.toString TreeConv.Indent SvgI._export state.tree
                 , HP.rows 50
                 , HP.cols 50
                 , HE.onValueChange TryParse
                 , HE.onFocusIn  $ const PauseListeningKeys
                 , HE.onFocusOut $ const ResumeListeningKeys
+                , HE.onBlur     $ const ResumeListeningKeys
                 ]
               ]
 
@@ -392,7 +437,7 @@ component' modes rconfig mbChildComp =
               [ HP.style $ Style.textarea state.theme
               , HP.value $ case state.exportMode of
                     Json -> TreeConv.writeJSON state.tree
-                    Text tmode -> TreeConv.toString tmode SvgI.toText state.tree
+                    Text tmode -> TreeConv.toString tmode SvgI._export state.tree
               , HP.readOnly true
               , HP.rows 10
               , HP.cols 50
@@ -453,6 +498,11 @@ component' modes rconfig mbChildComp =
       --   else
       --     HH.div [] []
 
+      pinnedTextLine path =
+        case Tree.value <$> Path.find path state.tree of
+          Just value -> SvgI.pinnedLine path value
+          Nothing -> "?"
+
       foldRepColumn colN =
         HH.div [ HP.style $ Style.foldRepColumn colN ]
 
@@ -465,7 +515,7 @@ component' modes rconfig mbChildComp =
       foldRepLines
            =  map (lmap fixFoldFocusPath)
           <$> TreeConv.toPathLines (TreeConv.modeToF TreeConv.Indent)
-           $  SvgI.toText
+           $  SvgI.foldLabel
           <$> case state.foldMode of
                 All -> state.tree
                 OnlyFocus ->
@@ -495,7 +545,7 @@ component' modes rconfig mbChildComp =
       >>> map NEA.toArray
       >>> map (map Tuple.snd)
 
-  wrapPinUnpin theme config allowGo pinned tree nodePath =
+  wrapPinUnpin nodeMode theme config allowGo pinned tree nodePath =
     HH.div
       [ HP.style Style.pinBox ]
       [ HH.div
@@ -509,7 +559,7 @@ component' modes rconfig mbChildComp =
           else
             renderPath ReadOnly config tree nodePath
         ]
-      , previewAt theme tree nodePath
+      , previewAt theme nodeMode tree nodePath
       ]
 
   updateFocus newPath s =
@@ -542,7 +592,7 @@ component' modes rconfig mbChildComp =
       )
     HandleKey sid evt -> do
       state <- H.get
-      when (not state.editingTreeText) $ do
+      when (not state.editingSomeText) $ do
         H.liftEffect $ E.preventDefault $ KE.toEvent evt
         -- H.liftEffect $ Console.log $ "key:" <> KE.key evt
         -- H.liftEffect $ Console.log $ "code:" <> KE.code evt
@@ -554,7 +604,7 @@ component' modes rconfig mbChildComp =
       handleAction
         $ Receive
           { size : s.size
-          , tree : TreeConv.fromString SvgI.fromText userInput <#> fromMaybe SvgI.default
+          , tree : TreeConv.fromString SvgI._import userInput <#> fromMaybe SvgI.default
           , elements : s.elements
           , theme : s.theme
           }
@@ -566,18 +616,24 @@ component' modes rconfig mbChildComp =
       H.modify_ _ { preview = Focused path }
     NodeOut path _ ->
       H.modify_ _ { preview = LostFocus path }
+    PreviewOver path ->
+      H.modify_ _ { preview = Focused path }
     Pin path ->
       H.modify_ \s -> s { pinned = s.pinned # Set.insert path }
     UnPin path ->
       H.modify_ \s -> s { pinned = s.pinned # Set.delete path }
     PauseListeningKeys ->
-      H.modify_ _ { editingTreeText = true }
+      H.modify_ _ { editingSomeText = true }
     ResumeListeningKeys ->
-      H.modify_ _ { editingTreeText = false }
-    EnterTextMode ->
+      H.modify_ _ { editingSomeText = false }
+    EnterTreeTextMode ->
       H.modify_ _ { treeTextMode = true }
-    LeaveTextMode ->
-      H.modify_ _ { treeTextMode = false, editingTreeText = false }
+    LeaveTreeTextMode ->
+      H.modify_ _ { treeTextMode = false, pinnedTextMode = false, editingSomeText = false }
+    EnterPinTextMode ->
+      H.modify_ _ { pinnedTextMode = true }
+    LeavePinTextMode ->
+      H.modify_ _ { pinnedTextMode = false, treeTextMode = false, editingSomeText = false }
     SwitchExport emode ->
       H.modify_ _ { exportMode = emode }
     FoldSelect mevt path -> do
@@ -589,6 +645,7 @@ component' modes rconfig mbChildComp =
           OnlyFocus -> All
           All -> OnlyFocus
       }
+    DoNothing -> pure unit
 
   handleKey key | key == "+" = H.modify_ \s -> s { zoom = s.zoom + 0.1 }
   handleKey key | key == "-" = H.modify_ \s -> s { zoom = s.zoom - 0.1 }
@@ -612,7 +669,7 @@ component' modes rconfig mbChildComp =
         { selection = Nothing
         , preview = None
         , treeTextMode = false
-        , editingTreeText = false
+        , editingSomeText = false
         }
   handleKey key | String.toLower key == "backspace" =
       H.modify_ \s ->
@@ -683,6 +740,7 @@ _isArrowKey = case _ of
 
 _qbutton :: forall p action. String -> action -> HH.HTML p action
 _qbutton = _qbutton' Style.button
+
 
 _qbutton' :: forall p action. String -> String -> action -> HH.HTML p action
 _qbutton' style label action =

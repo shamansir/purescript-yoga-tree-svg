@@ -129,7 +129,10 @@ breadcrumbsWithSelection = "margin: 5px;" :: String
 previewFocused = "opacity: 1.0;" :: String
 previewBlurred = "opacity: 0.6;" :: String
 previewNone = "" :: String
-pinnedBox = "" :: String
+pinnedBox :: Number -> String
+pinnedBox h = "position: relative; max-height: " <> show h <> "px; overflow: scroll"
+pinnedLabel = "display: block; padding: 5px;" :: String
+pinnedEdit = "position: absolute; right: 0; top: 0; display: block; padding: 5px; opacity: 0.5;" :: String
 historyBox :: Theme -> String
 historyBox theme = "user-select: none; padding: 10px; border: 1px solid rgb(190,190,190); margin: 5px 10px 5px 5px; background-color: " <> pc (background2 theme) <> ";"
 textEditBox = "user-select: none;" :: String
