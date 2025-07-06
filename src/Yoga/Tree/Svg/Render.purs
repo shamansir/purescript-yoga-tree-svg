@@ -1,6 +1,6 @@
 module Yoga.Tree.Svg.Render
     ( Slots, NodeSlot, _item, _preview
-    , GraphStatus(..), NodeMode(..), EdgeMode(..), NodeStatus(..)
+    , GraphStatus(..), NodeMode(..), EdgeMode(..), NodeStatus(..), SoftLimit(..)
     , NodeQuery, NodeOutput
     , GraphConfig, Modes, RenderConfig, Events, Geometry, ValueConfig
     , NodeComponent, NodeComponentInput, GraphHtml
@@ -19,6 +19,7 @@ import Prim.Row (class Cons) as Row
 
 import Data.Symbol (class IsSymbol)
 import Data.Number (pi) as Number
+import Data.Map (Map)
 import Data.Int (toNumber) as Int
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Graph (Graph, Edge)
@@ -99,6 +100,18 @@ data NodeStatus
     | Combo NodeStatus NodeStatus
 
 
+data SoftLimit
+    = Infinite
+    | Maximum Number
+
+
+data Visibility a
+    = AllVisible a
+    | DepthLimitReached a
+    | ChildrenBefore Int a
+    | ChidlrenAfter Int a
+
+
 derive instance Eq NodeStatus
 
 
@@ -106,18 +119,18 @@ foldl' :: forall f a b. Foldable f => (b -> a -> b) -> f a -> b -> b
 foldl' = flip <<< foldl
 
 
-distributePositions :: forall a. Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned a)
+distributePositions :: forall a. Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned (Visibility a))
 distributePositions geom getSize graph =
     graphMap
         # mapWithIndex ((/\))
+        # reduceVisibilityIfNeeded
         # foldl (flip distribute) Map.empty
         # fillBackChildren
         # map (lmap $ scale $ min geom.scaleLimit.max $ max geom.scaleLimit.min geom.scaleFactor)
-        -- TODO: rotate children using grand-parent -> parent vector
         # Graph.fromMap
 
     where
-        graphMap = Graph.toMap graph
+        graphMap = Graph.toMap graph :: Map Path (a /\ List Path)
         zeroPos = { x : 0.0, y : 0.0 }
         childPos parentPos =
             findPosition geom.baseDistance parentPos 0.0 (2.0 * Number.pi / 3.0)
@@ -132,21 +145,27 @@ distributePositions geom getSize graph =
                 posNum = Int.toNumber rotData.pos
             in -1.0 * (angleStart + (posNum / (neighNum - 1.0)) * total)
 
+        insertIndices :: Map Path (a /\ List Path) -> Map Path (Path /\ a /\ List Path)
+        insertIndices = mapWithIndex ((/\))
+
+        reduceVisibilityIfNeeded :: Map Path (Path /\ a /\ List Path) -> Map Path (Path /\ Visibility a /\ List Path)
+        reduceVisibilityIfNeeded = map $ map $ lmap AllVisible -- TODO
+
         inParent :: Path -> { neighbours :: Int, pos :: Int }
         inParent path =
             { neighbours : Map.lookup (Path.up path) graphMap <#> Tuple.snd <#> List.length # fromMaybe 0
             , pos : Path.lastPos path # fromMaybe (-1)
             }
 
-        fillBackChildren :: PositionedMap a -> PositionedGraphMap a
+        fillBackChildren :: PositionedMap (Visibility a) -> PositionedGraphMap (Visibility a)
         fillBackChildren = mapWithIndex \path cell -> cell /\ (Map.lookup path graphMap <#> Tuple.snd # fromMaybe Nil)
 
-        distribute :: Path /\ a /\ List Path -> PositionedMap a -> PositionedMap a
+        distribute :: Path /\ Visibility a /\ List Path -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
         distribute (curPath /\ curValue /\ childPaths) prevPositions =
             case prevPositions # Map.lookup curPath of
                 Nothing -> -- we didn't visit `curPath` as a child of some other node: it's probably a root node
                     prevPositions
-                            # storeRect curPath curValue zeroPos (getSize curPath curValue)
+                            # storeRect curPath curValue zeroPos (getSize curPath $ fromVis curValue)
                             # positionChildrenFrom zeroPos childPaths -- for now, position children from zero position
                 Just { x, y } -> -- we did located `curPath` as a child of some other node before, we can position its chidren relatively
                     let
@@ -155,15 +174,15 @@ distributePositions geom getSize graph =
                         # positionChildrenFrom { x, y } childPaths
                         # rotateAll { x, y } (calcTheta rotData) childPaths
 
-        storeRect :: Path -> a -> Position -> Size -> PositionedMap a -> PositionedMap a
+        storeRect :: Path -> Visibility a -> Position -> Size -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
         storeRect path value position size =
             Map.insert path $ injectRect value position size
 
-        positionChildrenFrom :: Position -> List Path -> PositionedMap a -> PositionedMap a
+        positionChildrenFrom :: Position -> List Path -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
         positionChildrenFrom parentPos childPaths =
             foldl' (flip $ insertChildPos parentPos $ List.length childPaths) $ mapWithIndex (/\) (List.reverse childPaths)
 
-        rotateAll :: Position -> Number -> List Path -> PositionedMap a -> PositionedMap a
+        rotateAll :: Position -> Number -> List Path -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
         rotateAll parentPos theta childPaths =
             foldl'
                 (\positions chPath ->
@@ -177,12 +196,12 @@ distributePositions geom getSize graph =
                         positions)
                 childPaths
 
-        insertChildPos :: Position -> Int -> Int /\ Path -> PositionedMap a -> PositionedMap a
+        insertChildPos :: Position -> Int -> Int /\ Path -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
         insertChildPos parentPos childrenCount (index /\ childPath) prevPositions =
             case graphMap # Map.lookup childPath <#> Tuple.fst of
                 Just childValue ->
                     prevPositions
-                        # storeRect childPath childValue (childPos parentPos childrenCount index) (getSize childPath childValue)
+                        # storeRect childPath (AllVisible childValue) (childPos parentPos childrenCount index) (getSize childPath childValue)
                 Nothing ->
                     prevPositions
 
@@ -236,6 +255,8 @@ type Geometry =
     , baseDistance :: Number
     , valueRadius :: Number -- = 5.0 :: Number
     , scaleLimit :: { min :: Number, max :: Number }
+    , depthLimit :: SoftLimit
+    , childrenLimit :: SoftLimit
     }
 
 
@@ -288,20 +309,20 @@ renderGraph' gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIn
         statusOf path = Graph.lookup path graph <#> _statusOf # fromMaybe Normal
         valuesGraph :: Graph Path a
         valuesGraph = graph <#> _valueOf
-        positionsMap :: PositionedGraphMap a
+        positionsMap :: PositionedGraphMap (Visibility a)
         positionsMap = Graph.toMap $ distributePositions geom rconfig.componentSize valuesGraph
-        renderValue :: Path -> Positioned a -> _
+        renderValue :: Path -> Positioned (Visibility a) -> _
         renderValue nodePath { x, y, value } =
             HS.g
                 [ HSA.transform $ pure $ HSA.Translate x y
                 , HHP.style Style.value
-                , HE.onClick     $ const $ events.valueClick nodePath value
-                , HE.onMouseOver $ const $ events.valueOver  nodePath value
-                , HE.onMouseOut  $ const $ events.valueOut   nodePath value
+                , HE.onClick     $ const $ events.valueClick nodePath $ fromVis value
+                , HE.onMouseOver $ const $ events.valueOver  nodePath $ fromVis value
+                , HE.onMouseOut  $ const $ events.valueOut   nodePath $ fromVis value
                 ]
                 $ case (statusOf nodePath) of
                     KeysNext ->
-                        [ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                        [ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath $ fromVis value
                         , HS.text
                             [ HSA.x $ -1.0 * (geom.valueRadius / 2.0)
                             , HSA.y $ -7.0
@@ -312,7 +333,7 @@ renderGraph' gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIn
                                 Nothing -> HH.text "?"
                             ]
                         ]
-                    _ -> pure $ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                    _ -> pure $ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath $ fromVis value
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
@@ -321,14 +342,14 @@ renderGraph' gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIn
                         $ pure
                         $ _renderEdge config.theme gstatus { start : statusOf parentPath, end : statusOf childPath } modes.edgeMode rconfig
                         $
-                            { start : { path : parentPath, pos : { x : parent.x, y: parent.y }, value : parent.value }
-                            , end   : { path : childPath,  pos : { x : child.x,  y: child.y  }, value : child.value  }
+                            { start : { path : parentPath, pos : { x : parent.x, y: parent.y }, value : fromVis $ parent.value }
+                            , end   : { path : childPath,  pos : { x : child.x,  y: child.y  }, value : fromVis $ child.value  }
                             }
                 Nothing -> HS.g [] []
-        renderNode :: Path -> (Positioned a /\ List Path) -> _
-        renderNode nodePath (a /\ paths) =
-            (renderEdge nodePath a <$> Array.fromFoldable paths)
-            <> [ renderValue nodePath a ]
+        renderNode :: Path -> (Positioned (Visibility a) /\ List Path) -> _
+        renderNode nodePath (va /\ paths) =
+            (renderEdge nodePath va <$> Array.fromFoldable paths)
+            <> [ renderValue nodePath va ]
 
 
 renderPreview :: forall a i m. ValueConfig a -> NodeStatus -> Path -> a -> GraphHtml m i
@@ -619,3 +640,11 @@ _edgeOpacity GHoverFocus estatus | _oneOf KeysFocus estatus = 0.3
 _edgeOpacity GHoverFocus estatus | _oneOf KeysNext estatus = 0.3
 _edgeOpacity GHoverFocus _ = 0.1
 _edgeOpacity GGhostFocus _ = 1.0
+
+
+fromVis :: forall a. Visibility a -> a
+fromVis = case _ of
+    AllVisible a -> a
+    DepthLimitReached a -> a
+    ChildrenBefore _ a -> a
+    ChidlrenAfter _ a -> a
