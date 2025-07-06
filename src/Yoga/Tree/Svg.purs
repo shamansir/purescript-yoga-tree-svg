@@ -13,6 +13,7 @@ import Data.Array ((:))
 import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse, replicate, groupBy) as Array
 import Data.Array.NonEmpty as NEA
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.Bifunctor (lmap)
 import Data.Graph (Graph)
 import Data.Graph (fromMap, toMap) as Graph
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
@@ -21,6 +22,7 @@ import Data.Set (empty, insert, delete, isEmpty, member, fromFoldable) as Set
 import Data.String (take, toLower) as String
 import Data.Tuple (fst, snd) as Tuple
 import Data.Tuple.Nested ((/\))
+import Data.Int (floor, toNumber) as Int
 
 import Halogen as H
 import Halogen.HTML as HH
@@ -77,12 +79,18 @@ data Action a
     | LeaveTextMode
     | SwitchExport ExportMode
     | FoldSelect ME.MouseEvent Path
+    | ToggleFoldMode
 
 
 data PathMode
     = Breadcrumbs
     | ReadOnly
     | SingleGo
+
+
+data FoldMode
+    = All
+    | OnlyFocus
 
 
 -- data PathItemMode
@@ -99,7 +107,7 @@ type Input a =
     { tree :: Tree a
     , size :: { width :: Number, height :: Number }
     , elements :: Set L.Element
-    , mode :: Style.Mode
+    , theme :: Style.Theme
     }
 
 
@@ -121,8 +129,9 @@ type State a =
     , treeTextMode :: Boolean
     , editingTreeText :: Boolean
     , elements :: Set L.Element
-    , mode :: Style.Mode
+    , theme :: Style.Theme
     , exportMode :: ExportMode
+    , foldMode :: FoldMode
     }
 
 
@@ -159,7 +168,7 @@ component' modes config mbChildComp =
     }
 
   initialState :: Input a -> State a
-  initialState { tree, size, elements, mode } =
+  initialState { tree, size, elements, theme } =
     { tree
     , focus : Path.root
     , history : [ Path.root ]
@@ -168,11 +177,12 @@ component' modes config mbChildComp =
     , preview : None
     , pinned : Set.empty
     , selection : Nothing
-    , treeTextMode : false
-    , editingTreeText : false
+    , treeTextMode : false -- is tree text mode enabled
+    , editingTreeText : false -- are we currently editing the tree
     , elements
-    , mode
+    , theme
     , exportMode : Json
+    , foldMode : OnlyFocus
     }
 
   receive :: Input a -> State a -> State a
@@ -331,14 +341,17 @@ component' modes config mbChildComp =
         L.E L.FoldTreeOrEdit ->
           if not state.treeTextMode then
 
-            HH.div
+            let
+              singleItemHeight = 13.5
+              itemsInColumn = Int.floor $ lo.rect.size.height / singleItemHeight
+            in HH.div
               [ HP.style $ Style.foldRepBox lo.rect.size
               , HE.onClick $ const EnterTextMode
               ]
-              $ mapWithIndex foldRepColumn
-              <$> splitBy 50
+              $  mapWithIndex foldRepColumn
+             <$> splitBy itemsInColumn
               $  foldRepLine
-              <$> foldRepLines
+             <$> foldRepLines
 
           else
 
@@ -429,10 +442,21 @@ component' modes config mbChildComp =
       foldRepColumn colN =
         HH.div [ HP.style $ Style.foldRepColumn colN ]
 
+      fixFoldFocusPath (Path path) =
+        case state.foldMode of
+          All -> Path path
+          OnlyFocus -> case state.focus of
+            Path focusPath -> Path $ focusPath <> path
+
       foldRepLines
-           =  TreeConv.toPathLines (TreeConv.modeToF TreeConv.Indent)
+           =  map (lmap fixFoldFocusPath)
+          <$> TreeConv.toPathLines (TreeConv.modeToF TreeConv.Indent)
            $  SvgI.toText
-          <$> state.tree
+          <$> case state.foldMode of
+                All -> state.tree
+                OnlyFocus ->
+                    fromMaybe state.tree
+                    $ Path.find state.focus state.tree
 
       foldRepLine (path /\ str) =
         HH.div
@@ -518,7 +542,7 @@ component' modes config mbChildComp =
           { size : s.size
           , tree : TreeConv.fromString SvgI.fromText userInput <#> fromMaybe SvgI.default
           , elements : s.elements
-          , mode : s.mode
+          , theme : s.theme
           }
     FocusOn path ->
       H.modify_ $ updateFocus path
@@ -545,6 +569,12 @@ component' modes config mbChildComp =
     FoldSelect mevt path -> do
       H.liftEffect $ E.stopPropagation $ ME.toEvent mevt
       H.modify_ _ { selection = Just path }
+    ToggleFoldMode ->
+      H.modify_ \s -> s { foldMode =
+        case s.foldMode of
+          OnlyFocus -> All
+          All -> OnlyFocus
+      }
 
   handleKey key | key == "+" = H.modify_ \s -> s { zoom = s.zoom + 0.1 }
   handleKey key | key == "-" = H.modify_ \s -> s { zoom = s.zoom - 0.1 }
@@ -666,6 +696,14 @@ _pathRootButton isReadOnly toLabel tree =
     in _pathStepButtonRaw isReadOnly buttonLabel $ Just $ FocusOn Path.root
 
 
+_pathReadOnlyRoot :: forall a p. (Path -> a -> String) -> Tree a -> HH.HTML p (Action a)
+_pathReadOnlyRoot toLabel tree =
+    let
+      mbValueAt = tree # Path.find Path.root <#> Tree.value
+      buttonLabel = maybe "*" (\val -> toLabel Path.root val <> " [*]") mbValueAt
+    in _pathStepButtonRaw false buttonLabel Nothing
+
+
 _pathStepButton :: forall a p. Boolean -> (Path -> a -> String) -> Tree a -> Path -> Int -> Int -> HH.HTML p (Action a)
 _pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
     -- pStepIndexis the index of the depth layer.
@@ -686,7 +724,7 @@ renderPath :: forall p a. PathMode -> SvgTree.Config a -> Tree a -> Path -> HH.H
 renderPath Breadcrumbs config tree path =
   case Path.toArray path of
     [] ->
-      HH.div [ HP.style Style.pathBox ] [ _pathStepButtonRaw false "*" Nothing ]
+      HH.div [ HP.style Style.pathBox ] [ _pathReadOnlyRoot config.valueLabel tree ]
     pathArr ->
       HH.div
         [ HP.style Style.pathBox ]

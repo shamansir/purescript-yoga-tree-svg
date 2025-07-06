@@ -37,7 +37,7 @@ import Yoga.Tree.Extended.Path (up, lastPos) as Path
 
 import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale, rotateBy)
 import Yoga.Tree.Svg.Style as Style
-import Yoga.Tree.Svg.Style (Mode(..))
+import Yoga.Tree.Svg.Style (Theme(..))
 
 import Halogen as H
 import Halogen.HTML (HTML)

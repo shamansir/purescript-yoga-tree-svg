@@ -5,12 +5,12 @@ import Prelude
 import Halogen.Svg.Attributes (Color(..), printColor) as HSA
 
 
-data Mode
+data Theme
     = Dark
     | Light
 
 
-type C = Mode -> HSA.Color
+type C = Theme -> HSA.Color
 
 
 background :: C
@@ -137,7 +137,7 @@ foldRepBox size = "position: relative; user-select: none; overflow: scroll; widt
 foldRepLine :: HSA.Color -> String
 foldRepLine c = "display: block; background-color: " <> pc c <> ";"
 foldRepColumn :: Int -> String
-foldRepColumn n = "position: absolute; top: 0; left: " <> show (n * 100) <> "px;"
+foldRepColumn n = "min-width: 60px; position: absolute; top: 0; left: " <> show (n * 100) <> "px;"
 foldRepIndent = "display: inline-block; width: 10px; min-width: 10px; opacity: 0.3; color: lightgray;" :: String
 jsonRepBox = "user-select: none;" :: String
 button   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0 2px; border-radius: 5px; border: 1px solid black; font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;" :: String
