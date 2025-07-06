@@ -1,7 +1,7 @@
 module Yoga.Tree.Svg
-  ( NodeComponent, Element(..)
+  ( NodeComponent
   , component, component_
-  , allElements
+  , module LayoutEx
   ) where
 
 import Prelude
@@ -50,6 +50,10 @@ import Yoga.Tree.Svg.Render as SvgTree
 import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
 import Yoga.Tree.Svg.SvgItem (toText, fromText, default) as SvgI
 import Yoga.Tree.Svg.Style as Style
+import Yoga.Tree.Svg.Layout (Element(..), all) as LayoutEx
+import Yoga.Tree.Svg.Layout as L
+
+import Play as Play
 
 -- import Yoga.Tree.Zipper (Path)
 
@@ -86,34 +90,15 @@ data PathMode
 --     | PINav
 
 
-data Element
-    = Preview
-    | History
-    | Pinned
-    | TextEdit
-    | Export
-    | Hints
-    | ZoomControls
-    | FoldTree
-
-
 data ExportMode
     = Json
     | Text TreeConv.Mode
 
 
-derive instance Eq Element
-derive instance Ord Element
-
-
-allElements :: Set Element
-allElements = Set.fromFoldable [ Preview, History, Pinned, TextEdit, Export, Hints, ZoomControls, FoldTree ]
-
-
 type Input a =
     { tree :: Tree a
     , size :: { width :: Number, height :: Number }
-    , elements :: Set Element
+    , elements :: Set L.Element
     , mode :: Style.Mode
     }
 
@@ -135,7 +120,7 @@ type State a =
     , selection :: Maybe Path
     , treeTextMode :: Boolean
     , editingTreeText :: Boolean
-    , elements :: Set Element
+    , elements :: Set L.Element
     , mode :: Style.Mode
     , exportMode :: ExportMode
     }
@@ -245,181 +230,201 @@ component' modes config mbChildComp =
   render state =
     HH.div
       [ HP.style $ Style.component state.size.width state.size.height ]
+      $ renderElement
+      <$>
+      (Play.flattenLayout
+        $ Play.layout
+        $ L.layout state.size
+      )
 
-      {- Graph component -}
-      [ HH.div
-        [ HP.style Style.graph ]
-        $ pure
-        $ HS.svg
-          [ HSA.width state.size.width
-          , HSA.height state.size.height
-          , HE.onWheel \wevt -> WheelChange
-              { dx : WE.deltaX wevt
-              , dy : WE.deltaY wevt
-              }
-          ]
-          $ pure
-          $ HS.g
-            [ HSA.transform [ HSA.Translate (state.size.width / 3.0) (state.size.height * 0.3) ] ]
-            $ SvgTree.renderGraph' (_graphStatus state) modes (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
-            -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
-            $ injectNodeStatuses state
-            $ Tree.toGraph' state.focus
-            $ fromMaybe state.tree
-            $ Path.find state.focus state.tree
+    where
+      htmlMoveTo pos =
+        HH.div
+          [ HP.style $ "position: absolute; left: " <> show pos.x <> "px; top: " <> show pos.y <> "px;" ]
 
-      {- Zoom & Size -}
-      , renderIfEnabled ZoomControls $ HH.div
-        [ HP.style Style.zoomBox ]
-        [ _qbutton "Reset zoom" ResetZoom
-        , HH.span [ HP.style Style.zoomItem ] [ HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom) ]
-        , HH.span [ HP.style Style.zoomItem ] [ HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height ]
-        ]
+      svgMoveTo pos =
+        HS.g
+            [ HSA.transform [ HSA.Translate pos.x pos.y ] ]
 
-      {- Keyboard info -}
+      renderElement lo = htmlMoveTo lo.rect.pos $ pure $ case lo.v of
 
-      , renderIfEnabled Hints $ HH.div
-        [ HP.style Style.hintsBox ]
-        $ HH.span [ HP.style Style.hintsLine ] <$> pure <$>
-          (
-          [ HH.text "\"+\" to slightly zoom in"
-          , HH.text "\"-\" to slightly zoom out"
-          , HH.text "\"=\" to reset zoom"
-          , HH.text $ if Array.length state.history > 1 then "<Beckspace> to navigate one step back in history" else ""
-          ]
-          <>
-          case state.selection of
-            Just _ ->
-                [ HH.text "<Escape> to cancel selection"
-                , HH.text "<number> to select move to a next child"
-                , HH.text "arrows to navigate tree up/down/right/left"
-                , HH.text "<Enter> to navigate to selected node"
-                , HH.text "<.> to pin selected node"
-                ]
-            Nothing ->
-                [ HH.text "<Space> to start navigating with keyboard"
-                , HH.text "<.> to pin hovered node"
-                , if Path.depth state.focus > 0 then HH.text "\"*\" or <Tab> to return to the root" else HH.text ""
-                ]
-          )
+        {- Graph component -}
+        L.E L.Graph ->
+          HH.div
+            [ HP.style Style.graph ]
+            $ pure
+            $ HS.svg
+              [ HSA.width lo.rect.size.width
+              , HSA.height lo.rect.size.height
+              , HE.onWheel \wevt -> WheelChange
+                  { dx : WE.deltaX wevt
+                  , dy : WE.deltaY wevt
+                  }
+              ]
+              $ pure $ svgMoveTo { x : lo.rect.size.width / 2.0, y : 10.0 }
+              $ SvgTree.renderGraph' (_graphStatus state) modes (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
+                -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
+                $ injectNodeStatuses state
+                $ Tree.toGraph' state.focus
+                $ fromMaybe state.tree
+                $ Path.find state.focus state.tree
 
-      {- Path Breadcrumbs -}
-      , HH.div
+        {- Path Breadcrumbs -}
+        L.E L.Breadcrumbs ->
+          HH.div
           -- [ HP.style "position: absolute; right: 0; top: 20px;" ]
-          [ HP.style $ case state.selection of
-            Just _  -> Style.breadcrumbsWithSelection
-            Nothing -> Style.breadcrumbs
-          ]
-          [ HH.text "Location: "
-          , renderPath Breadcrumbs config state.tree state.focus
-          , case state.selection of
-              Just selPath ->
-                HH.div
-                  []
-                  [ HH.text "Selection:"
-                  , renderPath Breadcrumbs config state.tree selPath
-                  ]
-              Nothing ->
-                HH.text ""
-          ]
+            [ HP.style $ case state.selection of
+              Just _  -> Style.breadcrumbsWithSelection
+              Nothing -> Style.breadcrumbs
+            ]
+            [ HH.text "Location: "
+            , renderPath Breadcrumbs config state.tree state.focus
+            , case state.selection of
+                Just selPath ->
+                  HH.div
+                    []
+                    [ HH.text "Selection:"
+                    , renderPath Breadcrumbs config state.tree selPath
+                    ]
+                Nothing ->
+                  HH.text ""
+            ]
 
-      {- Current Preview(s) -}
-      , renderIfEnabled Preview $ HH.div
-          [ HP.style $ case state.preview of
-            Focused _   -> Style.previewFocused
-            LostFocus _ -> Style.previewBlurred
-            None -> Style.previewNone
-          ]
-          $ pure
-          $ case state.preview of
-              Focused previewPath ->
-                if not $ Set.member previewPath state.pinned then
-                  wrapPinUnpin config false state.pinned state.tree previewPath
-                else HH.text ""
-              LostFocus previewPath ->
-                if not $ Set.member previewPath state.pinned then
-                  wrapPinUnpin config false state.pinned state.tree previewPath
-                else HH.text ""
-              None ->
-                HH.text ""
+        {- Current Preview(s) or Selection -}
+        L.E L.PreviewOrSelection ->
+          HH.div
+            [ HP.style $ case state.preview of
+              Focused _   -> Style.previewFocused
+              LostFocus _ -> Style.previewBlurred
+              None -> Style.previewNone
+            ]
+            $ pure
+            $ case state.preview of
+                Focused previewPath ->
+                  if not $ Set.member previewPath state.pinned then
+                    wrapPinUnpin config false state.pinned state.tree previewPath
+                  else HH.text ""
+                LostFocus previewPath ->
+                  if not $ Set.member previewPath state.pinned then
+                    wrapPinUnpin config false state.pinned state.tree previewPath
+                  else HH.text ""
+                None ->
+                  HH.text ""
 
-      {- Current Pinned -}
-      , renderIfEnabled Pinned $ HH.div
-          [ HP.style $ Style.pinnedBox
-          ]
-          $ wrapPinUnpin config true state.pinned state.tree
-          <$> Array.fromFoldable state.pinned
+        {- History -}
+        L.E L.History ->
+          HH.div
+            [ HP.style $ Style.historyBox
+            ]
+            $ (HH.div [] <<< pure <<< renderPath SingleGo config state.tree)
+            <$> Array.reverse state.history
 
-      {- History -}
-      , renderIfEnabled History $ HH.div
-          [ HP.style $ Style.historyBox
-          ]
-          $ (HH.div [] <<< pure <<< renderPath SingleGo config state.tree)
-          <$> Array.reverse state.history
+        {- Current Pinned -}
+        L.E L.Pinned ->
+          HH.div
+            [ HP.style $ Style.pinnedBox
+            ]
+            $ wrapPinUnpin config true state.pinned state.tree
+            <$> Array.fromFoldable state.pinned
 
-      {- String Rep -}
-      , if state.treeTextMode then
-          renderIfEnabled TextEdit $ HH.div
-            [ HP.style $ Style.textEditBox
+        {- Fold // String Rep -}
+        L.E L.FoldTreeOrEdit ->
+          if not state.treeTextMode then
+
+            HH.div
+              [ HP.style $ Style.foldRepBox lo.rect.size
+              , HE.onClick $ const EnterTextMode
+              ]
+              $ mapWithIndex foldRepColumn
+              <$> splitBy 50
+              $  foldRepLine
+              <$> foldRepLines
+
+          else
+
+            HH.div
+              [ HP.style $ Style.textEditBox
+              ]
+              [ HH.textarea
+                [ HP.style Style.textarea
+                , HP.value $ TreeConv.toString TreeConv.Indent SvgI.toText state.tree
+                , HP.rows 50
+                , HP.cols 50
+                , HE.onValueChange TryParse
+                , HE.onFocusIn  $ const PauseListeningKeys
+                , HE.onFocusOut $ const ResumeListeningKeys
+                ]
+              ]
+
+        {- Export / JSON Rep -}
+        L.E L.Export ->
+          HH.div
+            [ HP.style $ Style.jsonRepBox
             ]
             [ HH.textarea
               [ HP.style Style.textarea
-              , HP.value $ TreeConv.toString TreeConv.Indent SvgI.toText state.tree
-              , HP.rows 50
+              , HP.value $ case state.exportMode of
+                    Json -> TreeConv.writeJSON state.tree
+                    Text tmode -> TreeConv.toString tmode SvgI.toText state.tree
+              , HP.readOnly true
+              , HP.rows 10
               , HP.cols 50
-              , HE.onValueChange TryParse
-              , HE.onFocusIn  $ const PauseListeningKeys
-              , HE.onFocusOut $ const ResumeListeningKeys
+              ]
+            , HH.div
+              []
+              [ _qbutton "JSON"      $ SwitchExport Json
+              , _qbutton "Indent"    $ SwitchExport $ Text TreeConv.Indent
+              , _qbutton "Dashes"    $ SwitchExport $ Text TreeConv.Dashes
+              , _qbutton "Corners"   $ SwitchExport $ Text TreeConv.Corners
+              , _qbutton "Paths"     $ SwitchExport $ Text TreeConv.Paths
+              , _qbutton "Lines"     $ SwitchExport $ Text TreeConv.Lines
+              , _qbutton "Triangles" $ SwitchExport $ Text TreeConv.Triangles
               ]
             ]
-        else HH.div [] []
 
-      {- FoldRep Rep -}
-      , if not state.treeTextMode then
-          renderIfEnabled FoldTree
-            $ HH.div
-              [ HP.style $ Style.foldRepBox
-              , HE.onClick $ const EnterTextMode
+        {- Zoom & Size -}
+        L.E L.ZoomControls ->
+          HH.div
+            [ HP.style Style.zoomBox ]
+            [ _qbutton "Reset zoom" ResetZoom
+            , HH.span [ HP.style Style.zoomItem ] [ HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom) ]
+            , HH.span [ HP.style Style.zoomItem ] [ HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height ]
+            ]
+
+        {- Keyboard hints -}
+        L.E L.Hints ->
+          HH.div
+            [ HP.style Style.hintsBox ]
+            $ HH.span [ HP.style Style.hintsLine ] <$> pure <$>
+              (
+              [ HH.text "\"+\" to slightly zoom in"
+              , HH.text "\"-\" to slightly zoom out"
+              , HH.text "\"=\" to reset zoom"
+              , HH.text $ if Array.length state.history > 1 then "<Beckspace> to navigate one step back in history" else ""
               ]
-               $ mapWithIndex foldRepColumn
-              <$> splitBy 50
-               $  foldRepLine
-              <$> foldRepLines
-        else
-          HH.div [] []
+              <>
+              case state.selection of
+                Just _ ->
+                    [ HH.text "<Escape> to cancel selection"
+                    , HH.text "<number> to select move to a next child"
+                    , HH.text "arrows to navigate tree up/down/right/left"
+                    , HH.text "<Enter> to navigate to selected node"
+                    , HH.text "<.> to pin selected node"
+                    ]
+                Nothing ->
+                    [ HH.text "<Space> to start navigating with keyboard"
+                    , HH.text "<.> to pin hovered node"
+                    , if Path.depth state.focus > 0 then HH.text "\"*\" or <Tab> to return to the root" else HH.text ""
+                    ]
+              )
 
-      {- JSON Rep -}
-      , renderIfEnabled Export $ HH.div
-          [ HP.style $ Style.jsonRepBox
-          ]
-          [ HH.textarea
-            [ HP.style Style.textarea
-            , HP.value $ case state.exportMode of
-                  Json -> TreeConv.writeJSON state.tree
-                  Text tmode -> TreeConv.toString tmode SvgI.toText state.tree
-            , HP.readOnly true
-            , HP.rows 10
-            , HP.cols 50
-            ]
-          , HH.div
-            []
-            [ _qbutton "JSON"      $ SwitchExport Json
-            , _qbutton "Indent"    $ SwitchExport $ Text TreeConv.Indent
-            , _qbutton "Dashes"    $ SwitchExport $ Text TreeConv.Dashes
-            , _qbutton "Corners"   $ SwitchExport $ Text TreeConv.Corners
-            , _qbutton "Paths"     $ SwitchExport $ Text TreeConv.Paths
-            , _qbutton "Lines"     $ SwitchExport $ Text TreeConv.Lines
-            , _qbutton "Triangles" $ SwitchExport $ Text TreeConv.Triangles
-            ]
-          ]
+        L.S _ -> HH.text "" -- moveTo lo.rect.pos [ HS.text [] [ HH.text label ] ]
 
-      ]
-    where
-      renderIfEnabled element comp =
-        if Set.member element state.elements then
-          comp
-        else
-          HH.div [] []
+      -- renderIfEnabled element comp =
+      --   if Set.member element state.elements then
+      --     comp
+      --   else
+      --     HH.div [] []
 
       foldRepColumn colN =
         HH.div [ HP.style $ Style.foldRepColumn colN ]

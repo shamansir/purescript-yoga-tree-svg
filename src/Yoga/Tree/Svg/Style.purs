@@ -122,23 +122,24 @@ alpha n = case _ of
 
 component :: Number -> Number -> String
 component w h = "width:" <> show w <> "px; height: " <> show h <> "px; margin: 0; padding: 0; overflow: hidden; user-select: none; font-family: \"JetBrains Mono\", sans-serif; font-size: 10px; background-color: " <> pc (background Light) <> ";"
-graph = "position: absolute; left: 0; top: 0;" :: String
-zoomBox = "position: absolute; margin: 5px; right: 0; top: 0; user-select: none;" :: String
-breadcrumbs = "position: absolute; left: 0; top: 120px; margin: 5px;" :: String
-breadcrumbsWithSelection = "position: absolute; left: 0; top: 200px; margin: 5px;" :: String
-previewFocused = "position: absolute; right: 0; top: 100px; opacity: 1.0;" :: String
-previewBlurred = "position: absolute; right: 0; top: 100px; opacity: 0.6;" :: String
-previewNone = "position: absolute; right: 0; top: 100px" :: String
-pinnedBox = "position: absolute; right: 0; top: 200px;" :: String
-historyBox = "position: absolute; right: 0; top: 600px; user-select: none; padding: 10px; border: 1px solid rgb(190,190,190); margin: 5px 10px 5px 5px;" :: String
-textEditBox = "position: absolute; right: 220px; bottom: 200px; user-select: none;" :: String
-foldRepBox = "position: absolute; right: 299px; bottom: 200px; user-select: none; overflow: scroll; width: 250px; max-width: 250px; height: 650px;" :: String
+graph = "" :: String
+zoomBox = "margin: 5px; user-select: none;" :: String
+breadcrumbs = "margin: 5px;" :: String
+breadcrumbsWithSelection = "margin: 5px;" :: String
+previewFocused = "opacity: 1.0;" :: String
+previewBlurred = "opacity: 0.6;" :: String
+previewNone = "" :: String
+pinnedBox = "" :: String
+historyBox = "user-select: none; padding: 10px; border: 1px solid rgb(190,190,190); margin: 5px 10px 5px 5px;" :: String
+textEditBox = "user-select: none;" :: String
+foldRepBox :: { width :: Number, height :: Number } -> String
+foldRepBox size = "position: relative; user-select: none; overflow: scroll; width: " <> show size.width <> "px; max-width: " <> show size.width <> "px; height: " <> show (size.height - 10.0) <> "px;" :: String
 foldRepLine :: HSA.Color -> String
 foldRepLine c = "display: block; background-color: " <> pc c <> ";"
 foldRepColumn :: Int -> String
 foldRepColumn n = "position: absolute; top: 0; left: " <> show (n * 100) <> "px;"
 foldRepIndent = "display: inline-block; width: 10px; min-width: 10px; opacity: 0.3; color: lightgray;" :: String
-jsonRepBox = "position: absolute; right: 220px; bottom: 50px; user-select: none;" :: String
+jsonRepBox = "user-select: none;" :: String
 button   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0 2px; border-radius: 5px; border: 1px solid black; font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;" :: String
 pathBox = "display: inline-block;" :: String
 pathWithGo = "" :: String
