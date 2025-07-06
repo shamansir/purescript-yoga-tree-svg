@@ -2,11 +2,12 @@ module Yoga.Tree.Svg.Render
     ( Slots, NodeSlot, _item, _preview
     , GraphStatus(..), NodeMode(..), EdgeMode(..), NodeStatus(..)
     , NodeQuery, NodeOutput
-    , Modes, Config, Events, Geometry
+    , GraphConfig, Modes, RenderConfig, Events, Geometry, ValueConfig
     , NodeComponent, NodeComponentInput, GraphHtml
     , renderGraph, renderGraph_, renderGraph'
     , renderPreview, renderPreview_, renderPreview'
     , WithStatus, statusColor
+    , toValueConfig
     )
     where
 
@@ -185,14 +186,31 @@ distributePositions geom getSize graph =
                     prevPositions
 
 
-type Config a =
+type RenderConfig a =
     { valueLabel :: Path -> a -> String
-    , valueColor :: Path -> a -> HSA.Color
-    , valueLabelColor :: Path -> a -> HSA.Color
+    , valueColor :: Theme -> Path -> a -> HSA.Color
+    , valueLabelColor :: Theme -> Path -> a -> HSA.Color
     , valueLabelWidth :: Path -> a -> Int
-    , edgeColor :: Path -> a -> Path -> a -> HSA.Color
+    , edgeColor :: Theme -> Path -> a -> Path -> a -> HSA.Color
     , edgeLabel :: Path -> a -> Path -> a -> String
     , componentSize :: Path -> a -> { width :: Number, height :: Number }
+    }
+
+
+type GraphConfig a i =
+    { render :: RenderConfig a
+    , geometry :: Geometry
+    , modes :: Modes
+    , events :: Events i a
+    , theme :: Theme
+    }
+
+
+type ValueConfig a =
+    { render :: RenderConfig a
+    , geometry :: Geometry
+    , nodeMode :: NodeMode
+    , theme :: Theme
     }
 
 
@@ -224,7 +242,8 @@ type NodeComponent m a
 
 
 type NodeComponentInput a =
-    { path :: Path
+    { theme :: Theme
+    , path :: Path
     , value :: a
     }
 
@@ -243,23 +262,32 @@ _valueOf :: forall a. WithStatus a -> a
 _valueOf = Tuple.snd
 
 
-renderGraph :: forall a i m. GraphStatus -> Modes -> Geometry -> Config a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraph gstatus modes geom config = renderGraph' gstatus modes geom config Nothing
+toValueConfig :: forall a i. GraphConfig a i -> ValueConfig a
+toValueConfig { render, modes, geometry, theme } =
+    { render, theme, geometry, nodeMode : modes.nodeMode }
 
 
-renderGraph_ :: forall a i m. GraphStatus -> Modes -> Geometry -> Config a -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraph_ gstatus modes geom config childComp = renderGraph' gstatus modes geom config (Just childComp)
+renderGraph :: forall a i m. GraphStatus -> GraphConfig a i -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraph gstatus config = renderGraph' gstatus config Nothing
 
 
-renderGraph' :: forall a i m. GraphStatus -> Modes -> Geometry -> Config a -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraph' gstatus modes geom config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
+renderGraph_ :: forall a i m. GraphStatus -> GraphConfig a i -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraph_ gstatus config childComp = renderGraph' gstatus config $ Just childComp
+
+
+renderGraph' :: forall a i m. GraphStatus -> GraphConfig a i -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraph' gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
+        modes   = config.modes :: Modes
+        geom    = config.geometry :: Geometry
+        rconfig = config.render :: RenderConfig a
+        vconfig = toValueConfig config :: ValueConfig a
         statusOf :: Path -> NodeStatus
         statusOf path = Graph.lookup path graph <#> _statusOf # fromMaybe Normal
         valuesGraph :: Graph Path a
         valuesGraph = graph <#> _valueOf
         positionsMap :: PositionedGraphMap a
-        positionsMap = Graph.toMap $ distributePositions geom config.componentSize valuesGraph
+        positionsMap = Graph.toMap $ distributePositions geom rconfig.componentSize valuesGraph
         renderValue :: Path -> Positioned a -> _
         renderValue nodePath { x, y, value } =
             HS.g
@@ -271,7 +299,7 @@ renderGraph' gstatus modes geom config mbComponent events graph = foldl (<>) [] 
                 ]
                 $ case (statusOf nodePath) of
                     KeysNext ->
-                        [ _renderValue gstatus modes.nodeMode geom config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                        [ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
                         , HS.text
                             [ HSA.x $ -1.0 * (geom.valueRadius / 2.0)
                             , HSA.y $ -7.0
@@ -282,14 +310,14 @@ renderGraph' gstatus modes geom config mbComponent events graph = foldl (<>) [] 
                                 Nothing -> HH.text "?"
                             ]
                         ]
-                    _ -> pure $ _renderValue gstatus modes.nodeMode geom config _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
+                    _ -> pure $ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath value
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
                     HS.g
                         [ HHP.style Style.edge ]
                         $ pure
-                        $ _renderEdge gstatus { start : statusOf parentPath, end : statusOf childPath } modes.edgeMode config
+                        $ _renderEdge config.theme gstatus { start : statusOf parentPath, end : statusOf childPath } modes.edgeMode rconfig
                         $
                             { start : { path : parentPath, pos : { x : parent.x, y: parent.y }, value : parent.value }
                             , end   : { path : childPath,  pos : { x : child.x,  y: child.y  }, value : child.value  }
@@ -301,21 +329,21 @@ renderGraph' gstatus modes geom config mbComponent events graph = foldl (<>) [] 
             <> [ renderValue nodePath a ]
 
 
-renderPreview :: forall a i m. NodeMode -> Geometry -> Config a -> NodeStatus -> Path -> a -> GraphHtml m i
-renderPreview nodeMode geom config = renderPreview' nodeMode geom config Nothing
+renderPreview :: forall a i m. ValueConfig a -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPreview vconfig = renderPreview' vconfig Nothing
 
 
-renderPreview_ :: forall a i m. NodeMode -> Geometry -> Config a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
-renderPreview_ nodeMode geom config childComp = renderPreview' nodeMode geom config (Just childComp)
+renderPreview_ :: forall a i m. ValueConfig a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPreview_ vconfig childComp = renderPreview' vconfig (Just childComp)
 
 
-renderPreview' :: forall a i m. NodeMode -> Geometry -> Config a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
-renderPreview' nodeMode geom config mbComponent nodeStatus nodePath value =
+renderPreview' :: forall a i m. ValueConfig a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPreview' vconfig mbComponent nodeStatus nodePath value =
     let
-        componentSize = config.componentSize nodePath value
+        componentSize = vconfig.render.componentSize nodePath value
         padding = 5.0
         position =
-            case nodeMode of
+            case vconfig.nodeMode of
               Component ->
                 { x : 0.0
                 , y : componentSize.height / 2.0
@@ -332,7 +360,7 @@ renderPreview' nodeMode geom config mbComponent nodeStatus nodePath value =
             [ HS.rect
                 [ HSA.width  $ componentSize.width + padding * 2.0
                 , HSA.height $ componentSize.height + padding * 2.0
-                , HSA.stroke $ _strokeFromStatus nodeStatus
+                , HSA.stroke $ _strokeFromStatus vconfig.theme nodeStatus
                 , HSA.strokeWidth $ _strokeWidthFromStatus nodeStatus
                 , HSA.fill $ HSA.RGBA 0 0 0 0.0
                 ]
@@ -341,18 +369,18 @@ renderPreview' nodeMode geom config mbComponent nodeStatus nodePath value =
                 , HSA.transform $ pure $ HSA.Translate padding padding
                 ]
                 $ pure
-                $ _renderValue GNormal nodeMode geom config _preview mbComponent nodeStatus position nodePath value
+                $ _renderValue GNormal vconfig _preview mbComponent nodeStatus position nodePath value
             ]
 
 
-statusColor :: NodeStatus -> HSA.Color
-statusColor = case _ of
+statusColor :: Theme -> NodeStatus -> HSA.Color
+statusColor th = case _ of
   Normal -> HSA.RGBA 0 0 0 0.0
-  FocusRoot -> Style.alpha 0.6 $ Style.reA Light
-  HoverFocus -> Style.alpha 0.6 $ Style.grB Light
-  HoverGhost -> Style.alpha 0.6 $ Style.grA Light
-  Selected -> Style.alpha 0.6 $ Style.blB Light
-  KeysNext -> Style.alpha 0.6 $ Style.blA Light
+  FocusRoot -> Style.alpha 0.6 $ Style.reA th
+  HoverFocus -> Style.alpha 0.6 $ Style.grB th
+  HoverGhost -> Style.alpha 0.6 $ Style.grA th
+  Selected -> Style.alpha 0.6 $ Style.blB th
+  KeysNext -> Style.alpha 0.6 $ Style.blA th
   _ -> HSA.RGBA 0 0 0 0.0
 
 
@@ -369,8 +397,8 @@ type EdgeDef a = Edge (EdgeJoint a)
 type EdgeStatus = Edge NodeStatus
 
 
-_renderEdge :: forall a p i. GraphStatus -> EdgeStatus -> EdgeMode -> Config a -> EdgeDef a -> HTML p i
-_renderEdge gstatus estatus EdgeWithLabel config edge =
+_renderEdge :: forall a p i. Theme -> GraphStatus -> EdgeStatus -> EdgeMode -> RenderConfig a -> EdgeDef a -> HTML p i
+_renderEdge th gstatus estatus EdgeWithLabel rconfig edge =
     let
         parent = edge.start
         child = edge.end
@@ -382,15 +410,15 @@ _renderEdge gstatus estatus EdgeWithLabel config edge =
             , HSA.y1 parentPos.y
             , HSA.x2 childPos.x
             , HSA.y2 childPos.y
-            , HSA.stroke $ config.edgeColor parent.path parent.value child.path child.value
+            , HSA.stroke $ rconfig.edgeColor th parent.path parent.value child.path child.value
             ]
         , HS.text
             [ HSA.x $ parentPos.x + ((childPos.x - parentPos.x) / 2.0)
             , HSA.y $ parentPos.y + ((childPos.y - parentPos.y) / 2.0)
             ]
-            [ HH.text $ config.edgeLabel parent.path parent.value child.path child.value ]
+            [ HH.text $ rconfig.edgeLabel parent.path parent.value child.path child.value ]
         ]
-_renderEdge gstatus estatus JustEdge config edge =
+_renderEdge th gstatus estatus JustEdge rconfig edge =
     let
         parent = edge.start
         child = edge.end
@@ -402,7 +430,7 @@ _renderEdge gstatus estatus JustEdge config edge =
             , HSA.y1 parentPos.y
             , HSA.x2 childPos.x
             , HSA.y2 childPos.y
-            , HSA.stroke $ config.edgeColor parent.path parent.value child.path child.value
+            , HSA.stroke $ rconfig.edgeColor th parent.path parent.value child.path child.value
             , HSA.strokeOpacity $ _edgeOpacity gstatus estatus
             ]
         ]
@@ -412,9 +440,7 @@ _renderValue
      . IsSymbol slot
     => Row.Cons slot NodeSlot r' Slots
     => GraphStatus
-    -> NodeMode
-    -> Geometry
-    -> Config a
+    -> ValueConfig a
     -> Proxy slot
     -> Maybe (NodeComponent m a)
     -> NodeStatus
@@ -422,26 +448,47 @@ _renderValue
     -> Path
     -> a
     -> GraphHtml m i
-_renderValue gstatus NodeWithLabel geom config _ _ status pos nodePath value =
+_renderValue gstatus vconfig =
+    _renderValue' vconfig.theme gstatus vconfig.nodeMode vconfig.geometry vconfig.render
+
+
+
+_renderValue'
+    :: forall slot r' i m a
+     . IsSymbol slot
+    => Row.Cons slot NodeSlot r' Slots
+    => Theme
+    -> GraphStatus
+    -> NodeMode
+    -> Geometry
+    -> RenderConfig a
+    -> Proxy slot
+    -> Maybe (NodeComponent m a)
+    -> NodeStatus
+    -> Position
+    -> Path
+    -> a
+    -> GraphHtml m i
+_renderValue' th gstatus NodeWithLabel geom rconfig _ _ status pos nodePath value =
     HS.g
         []
         [ HS.circle
             [ HSA.cx pos.x
             , HSA.cy pos.y
             , HSA.r geom.valueRadius
-            , HSA.fill          $ config.valueColor nodePath value
-            , HSA.stroke        $ _strokeFromStatus status
+            , HSA.fill          $ rconfig.valueColor th nodePath value
+            , HSA.stroke        $ _strokeFromStatus th status
             , HSA.strokeWidth   $ _strokeWidthFromStatus status
             , HSA.fillOpacity   $ _nodeOpacity gstatus status
             , HSA.strokeOpacity $ _nodeOpacity gstatus status
             ]
         , HS.rect
-            [ HSA.fill $ Style.blA Light
+            [ HSA.fill $ Style.blA th
             , HSA.x $ pos.x
             , HSA.y $ pos.y - 2.0
             , HSA.rx 6.0
             , HSA.ry 6.0
-            , HSA.width $ Int.toNumber (config.valueLabelWidth nodePath value) * 8.0 + 5.0
+            , HSA.width $ Int.toNumber (rconfig.valueLabelWidth nodePath value) * 8.0 + 5.0
             , HSA.height 15.0
             , HSA.fillOpacity $ case status of
                 Normal -> 0.1
@@ -455,34 +502,34 @@ _renderValue gstatus NodeWithLabel geom config _ _ status pos nodePath value =
                 _ -> 0.1
             ]
         , HS.text
-            [ HSA.fill $ config.valueLabelColor nodePath value
+            [ HSA.fill $ rconfig.valueLabelColor th nodePath value
             , HSA.x $ pos.x + 6.0
             , HSA.y $ pos.y + 9.0
             ]
-            [ HH.text $ config.valueLabel nodePath value
+            [ HH.text $ rconfig.valueLabel nodePath value
             ]
         ]
-_renderValue gstatus JustNode geom config _ _ status pos nodePath value =
+_renderValue' th gstatus JustNode geom rconfig _ _ status pos nodePath value =
     HS.g
         []
         [ HS.circle
             [ HSA.cx pos.x
             , HSA.cy pos.y
             , HSA.r geom.valueRadius
-            , HSA.fill          $ config.valueColor nodePath value
-            , HSA.stroke        $ _strokeFromStatus status
+            , HSA.fill          $ rconfig.valueColor th nodePath value
+            , HSA.stroke        $ _strokeFromStatus th status
             , HSA.strokeWidth   $ _strokeWidthFromStatus status
             , HSA.fillOpacity   $ _nodeOpacity gstatus status
             , HSA.strokeOpacity $ _nodeOpacity gstatus status
             ]
         ]
-_renderValue gstatus Component _ _ _ Nothing status pos _ _ =
+_renderValue' th gstatus Component _ _ _ Nothing status pos _ _ =
     HS.text
         [ HSA.x pos.x, HSA.y pos.y
         , HSA.fill $ HSA.RGB 0 0 0
         ]
         [ HH.text "NO COMPONENT" ]
-_renderValue gstatus Component _ _ pslot (Just childComp) status pos nodePath value =
+_renderValue' th gstatus Component _ _ pslot (Just childComp) status pos nodePath value =
     HS.g
         [ HSA.transform $ pure $ HSA.Translate pos.x pos.y ]
         $ pure
@@ -490,19 +537,20 @@ _renderValue gstatus Component _ _ pslot (Just childComp) status pos nodePath va
             pslot
             nodePath
             childComp
-            { path : nodePath
+            { theme : th
+            , path : nodePath
             , value
             }
 
 
-_strokeFromStatus :: NodeStatus -> HSA.Color
-_strokeFromStatus = case _ of
-  Normal -> Style.tx Light
-  FocusRoot -> Style.reA Light
-  HoverFocus -> Style.grB Light
-  HoverGhost -> Style.grA Light
-  Selected -> Style.blB Light
-  KeysNext -> Style.blA Light
+_strokeFromStatus :: Theme -> NodeStatus -> HSA.Color
+_strokeFromStatus th = case _ of
+  Normal -> Style.tx th
+  FocusRoot -> Style.reA th
+  HoverFocus -> Style.grB th
+  HoverGhost -> Style.grA th
+  Selected -> Style.blB th
+  KeysNext -> Style.blA th
   _ -> HSA.RGB 0 0 0
 
 

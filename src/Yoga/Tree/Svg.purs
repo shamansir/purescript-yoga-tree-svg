@@ -138,16 +138,16 @@ type State a =
 type NodeComponent m a = SvgTree.NodeComponent m a
 
 
-component :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.Config a -> H.Component query (Input a) output m
-component modes config = component' modes config Nothing
+component :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> H.Component query (Input a) output m
+component modes rconfig = component' modes rconfig Nothing
 
 
-component_ :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.Config a -> NodeComponent m a -> H.Component query (Input a) output m
-component_ modes config childComp = component' modes config (Just childComp)
+component_ :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> NodeComponent m a -> H.Component query (Input a) output m
+component_ modes rconfig childComp = component' modes rconfig (Just childComp)
 
 
-component' :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.Config a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
-component' modes config mbChildComp =
+component' :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
+component' modes rconfig mbChildComp =
   H.mkComponent
     { initialState
     , render
@@ -196,10 +196,22 @@ component' modes config mbChildComp =
     , valueOut   : NodeOut
     }
 
-  previewAt tree previewPath =
+  graphConfig :: Style.Theme -> SvgTree.GraphConfig a _
+  graphConfig theme =
+    { geometry
+    , events
+    , modes
+    , render : rconfig
+    , theme
+    }
+
+  previewConfig :: Style.Theme -> SvgTree.ValueConfig a
+  previewConfig = graphConfig >>> SvgTree.toValueConfig >>> _ { nodeMode = modes.previewMode }
+
+  previewAt theme tree previewPath =
     case Path.find previewPath tree of
       Just previewNode ->
-        SvgTree.renderPreview' modes.previewMode geometry config mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
+        SvgTree.renderPreview' (previewConfig theme) mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
 
@@ -239,7 +251,7 @@ component' modes config mbChildComp =
   render :: State a -> _
   render state =
     HH.div
-      [ HP.style $ Style.component state.size.width state.size.height ]
+      [ HP.style $ Style.component state.theme state.size.width state.size.height ]
       $ renderElement
       <$>
       (Play.flattenLayout
@@ -248,6 +260,8 @@ component' modes config mbChildComp =
       )
 
     where
+      gconfig = graphConfig state.theme # \rec -> rec { geometry = rec.geometry { scaleFactor = state.zoom * 5.0 } }
+
       htmlMoveTo pos =
         HH.div
           [ HP.style $ "position: absolute; left: " <> show pos.x <> "px; top: " <> show pos.y <> "px;" ]
@@ -272,7 +286,7 @@ component' modes config mbChildComp =
                   }
               ]
               $ pure $ svgMoveTo { x : lo.rect.size.width / 2.0, y : 10.0 }
-              $ SvgTree.renderGraph' (_graphStatus state) modes (geometry { scaleFactor = state.zoom * 5.0 }) config mbChildComp events
+              $ SvgTree.renderGraph' (_graphStatus state) gconfig mbChildComp events
                 -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
                 $ injectNodeStatuses state
                 $ Tree.toGraph' state.focus
@@ -288,13 +302,13 @@ component' modes config mbChildComp =
               Nothing -> Style.breadcrumbs
             ]
             [ HH.text "Location: "
-            , renderPath Breadcrumbs config state.tree state.focus
+            , renderPath Breadcrumbs gconfig.render state.tree state.focus
             , case state.selection of
                 Just selPath ->
                   HH.div
                     []
                     [ HH.text "Selection:"
-                    , renderPath Breadcrumbs config state.tree selPath
+                    , renderPath Breadcrumbs gconfig.render state.tree selPath
                     ]
                 Nothing ->
                   HH.text ""
@@ -312,11 +326,11 @@ component' modes config mbChildComp =
             $ case state.preview of
                 Focused previewPath ->
                   if not $ Set.member previewPath state.pinned then
-                    wrapPinUnpin config false state.pinned state.tree previewPath
+                    wrapPinUnpin state.theme gconfig.render false state.pinned state.tree previewPath
                   else HH.text ""
                 LostFocus previewPath ->
                   if not $ Set.member previewPath state.pinned then
-                    wrapPinUnpin config false state.pinned state.tree previewPath
+                    wrapPinUnpin state.theme gconfig.render false state.pinned state.tree previewPath
                   else HH.text ""
                 None ->
                   HH.text ""
@@ -324,9 +338,9 @@ component' modes config mbChildComp =
         {- History -}
         L.E L.History ->
           HH.div
-            [ HP.style $ Style.historyBox
+            [ HP.style $ Style.historyBox state.theme
             ]
-            $ (HH.div [] <<< pure <<< renderPath SingleGo config state.tree)
+            $ (HH.div [] <<< pure <<< renderPath SingleGo gconfig.render state.tree)
             <$> Array.reverse state.history
 
         {- Current Pinned -}
@@ -334,7 +348,7 @@ component' modes config mbChildComp =
           HH.div
             [ HP.style $ Style.pinnedBox
             ]
-            $ wrapPinUnpin config true state.pinned state.tree
+            $ wrapPinUnpin state.theme gconfig.render true state.pinned state.tree
             <$> Array.fromFoldable state.pinned
 
         {- Fold // String Rep -}
@@ -359,7 +373,7 @@ component' modes config mbChildComp =
               [ HP.style $ Style.textEditBox
               ]
               [ HH.textarea
-                [ HP.style Style.textarea
+                [ HP.style $ Style.textarea state.theme
                 , HP.value $ TreeConv.toString TreeConv.Indent SvgI.toText state.tree
                 , HP.rows 50
                 , HP.cols 50
@@ -375,7 +389,7 @@ component' modes config mbChildComp =
             [ HP.style $ Style.jsonRepBox
             ]
             [ HH.textarea
-              [ HP.style Style.textarea
+              [ HP.style $ Style.textarea state.theme
               , HP.value $ case state.exportMode of
                     Json -> TreeConv.writeJSON state.tree
                     Text tmode -> TreeConv.toString tmode SvgI.toText state.tree
@@ -407,7 +421,7 @@ component' modes config mbChildComp =
         {- Keyboard hints -}
         L.E L.Hints ->
           HH.div
-            [ HP.style Style.hintsBox ]
+            [ HP.style $ Style.hintsBox state.theme ]
             $ HH.span [ HP.style Style.hintsLine ] <$> pure <$>
               (
               [ HH.text "\"+\" to slightly zoom in"
@@ -462,7 +476,7 @@ component' modes config mbChildComp =
         HH.div
           [ HP.style
               $ Style.foldRepLine
-              $ statusColor
+              $ statusColor state.theme
               $ statusOf state path
           , HE.onClick $ flip FoldSelect path
           ]
@@ -481,7 +495,7 @@ component' modes config mbChildComp =
       >>> map NEA.toArray
       >>> map (map Tuple.snd)
 
-  wrapPinUnpin config allowGo pinned tree nodePath =
+  wrapPinUnpin theme config allowGo pinned tree nodePath =
     HH.div
       [ HP.style Style.pinBox ]
       [ HH.div
@@ -495,7 +509,7 @@ component' modes config mbChildComp =
           else
             renderPath ReadOnly config tree nodePath
         ]
-      , previewAt tree nodePath
+      , previewAt theme tree nodePath
       ]
 
   updateFocus newPath s =
@@ -720,7 +734,7 @@ _pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
       else _pathStepButtonRaw true  buttonLabel Nothing
 
 
-renderPath :: forall p a. PathMode -> SvgTree.Config a -> Tree a -> Path -> HH.HTML p (Action a)
+renderPath :: forall p a. PathMode -> SvgTree.RenderConfig a -> Tree a -> Path -> HH.HTML p (Action a)
 renderPath Breadcrumbs config tree path =
   case Path.toArray path of
     [] ->

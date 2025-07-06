@@ -35,8 +35,8 @@ import Yoga.Tree (Tree)
 import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended as Tree
 import Yoga.Tree.Svg (NodeComponent, component_, all) as YST
-import Yoga.Tree.Svg.Render (Modes, Config, NodeMode(..), EdgeMode(..)) as YST
-import Yoga.Tree.Svg.Style (Theme(..)) as YST
+import Yoga.Tree.Svg.Render (Modes, RenderConfig, NodeMode(..), EdgeMode(..)) as YST
+import Yoga.Tree.Svg.Style (Theme(..), tx, tx2, tx3) as YST
 import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
 import Yoga.Tree.Svg.SvgItem (toText) as YSTI
 import Yoga.JSON (class WriteForeign, class ReadForeign, readImpl, writeImpl)
@@ -211,8 +211,6 @@ lettersNumbers =
     zVars = ss <$> [ "ź", "ž", "ż" ]
 
 
-
-
 instance Show DemoItem where
   show = case _ of
     IntItem n -> show n
@@ -232,14 +230,14 @@ instance ReadForeign DemoItem where
     <|> ((readImpl f :: F String) <#> StrItem)
 
 
-config :: forall a. IsSvgTreeItem a => YST.Config a
+config :: forall a. IsSvgTreeItem a => YST.RenderConfig a
 config =
-  { edgeColor : \_ _ _ _ -> HSA.RGB 0 0 0
+  { edgeColor : \theme _ _ _ _ -> YST.tx theme
   , edgeLabel : \_ _ _ _ -> "E"
   , valueLabel : const YSTI.toText
-  , valueLabelColor : const $ const $ HSA.RGB 10 10 10
+  , valueLabelColor : \theme _ _ -> YST.tx2 theme
   , valueLabelWidth : \path -> String.length <<< config.valueLabel path
-  , valueColor : const $ const $ HSA.RGB 200 200 200
+  , valueColor : \theme _ _ -> YST.tx3 theme
   , componentSize  : const $ const { width : 200.0, height : 25.0 }
   }
 

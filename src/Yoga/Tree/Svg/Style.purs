@@ -120,8 +120,8 @@ alpha n = case _ of
     color -> color
 
 
-component :: Number -> Number -> String
-component w h = "width:" <> show w <> "px; height: " <> show h <> "px; margin: 0; padding: 0; overflow: hidden; user-select: none; font-family: \"JetBrains Mono\", sans-serif; font-size: 10px; background-color: " <> pc (background Light) <> ";"
+component :: Theme -> Number -> Number -> String
+component t w h = "width:" <> show w <> "px; height: " <> show h <> "px; margin: 0; padding: 0; overflow: hidden; user-select: none; font-family: \"JetBrains Mono\", sans-serif; font-size: 10px; background-color: " <> pc (background t) <> ";"
 graph = "" :: String
 zoomBox = "margin: 5px; user-select: none;" :: String
 breadcrumbs = "margin: 5px;" :: String
@@ -130,7 +130,8 @@ previewFocused = "opacity: 1.0;" :: String
 previewBlurred = "opacity: 0.6;" :: String
 previewNone = "" :: String
 pinnedBox = "" :: String
-historyBox = "user-select: none; padding: 10px; border: 1px solid rgb(190,190,190); margin: 5px 10px 5px 5px;" :: String
+historyBox :: Theme -> String
+historyBox theme = "user-select: none; padding: 10px; border: 1px solid rgb(190,190,190); margin: 5px 10px 5px 5px; background-color: " <> pc (background2 theme) <> ";"
 textEditBox = "user-select: none;" :: String
 foldRepBox :: { width :: Number, height :: Number } -> String
 foldRepBox size = "position: relative; user-select: none; overflow: scroll; width: " <> show size.width <> "px; max-width: " <> show size.width <> "px; height: " <> show (size.height - 10.0) <> "px;" :: String
@@ -147,10 +148,12 @@ pathStep :: Boolean -> String
 pathStep true  = "cursor: auto;    pointer-events: all; display: inline-block; padding: 2px 5px; margin: 2px 2px; border-radius: 5px; border: 1px solid rgb(230,230,230); font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;"
 pathStep false = "cursor: pointer; pointer-events: all; display: inline-block; padding: 2px 5px; margin: 2px 2px; border-radius: 5px; border: 1px solid rgb(90,90,90); font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;"
 zoomItem = "padding: 2px 5px;" :: String
-hintsBox = "margin: 5px; max-width: 400px; padding: 2px 5px; border-radius: 5px; border: 1px solid rgb(190,190,190)" :: String
+hintsBox :: Theme -> String
+hintsBox theme = "margin: 5px; max-width: 400px; padding: 2px 5px; border-radius: 5px; border: 1px solid rgb(190,190,190); background-color: " <> pc (background theme) <> ";"
 hintsLine = "display: block;" :: String
 value = "cursor: pointer; pointer-events: all;" :: String
 edge  = "cursor: pointer; pointer-events: all;" :: String
 previewBox = "pointer-events: none; display: block;" :: String
-textarea = "font-family: \"JetBrains Mono\", sans-serif; font-size: 10px; border-radius: 6px; padding: 5px; background-color: " <> pc (background2 Light) <> ";" :: String
+textarea :: Theme -> String
+textarea theme = "font-family: \"JetBrains Mono\", sans-serif; font-size: 10px; border-radius: 6px; padding: 5px; background-color: " <> pc (background2 theme) <> ";"
 pinBox = "" :: String
