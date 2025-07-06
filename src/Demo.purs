@@ -2,7 +2,6 @@ module Demo where
 
 import Prelude
 
-import Debug as Debug
 import Effect.Console (log) as Console
 
 import Foreign (F)
