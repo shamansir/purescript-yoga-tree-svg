@@ -1,20 +1,14 @@
 module Yoga.Tree.Svg.Geometry
     ( findPosition
     , rotateBy
-    , Position, Size
-    , Positioned, PositionedMap, PositionedGraphMap
+    , Position, Size, Positioned
     , transform, scale
     ) where
 
 import Prelude
 
-import Data.Map (Map)
 import Data.Int (toNumber) as Int
 import Data.Number (cos, sin) as Number
-import Data.Tuple.Nested (type (/\))
-import Data.List (List)
-
-import Yoga.Tree.Extended.Path (Path)
 
 
 findPosition :: Number -> Position -> Number -> Number -> Int -> Int -> Position
@@ -47,8 +41,6 @@ rotateBy parent current scaleFactor theta =
 type Position = { x :: Number, y :: Number }
 type Size = { width :: Number, height :: Number }
 type Positioned a = { x :: Number, y :: Number, width :: Number, height :: Number, value :: a }
-type PositionedMap a = Map Path (Positioned a)
-type PositionedGraphMap a = Map Path (Positioned a /\ List Path)
 
 
 transform :: forall a. Number -> Number -> Number -> Number -> Positioned a -> Positioned a

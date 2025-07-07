@@ -32,7 +32,7 @@ import Data.Array (fromFoldable, toUnfoldable) as Array
 import Data.Tuple (fst, snd, uncurry) as Tuple
 import Data.List (List(..))
 import Data.List (length, reverse, filter, take, drop) as List
-import Data.Foldable (class Foldable, foldl)
+import Data.Foldable (class Foldable, foldl, foldr)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Tuple.Nested ((/\), type (/\))
 import Data.Bifunctor (lmap)
@@ -40,7 +40,7 @@ import Data.Bifunctor (lmap)
 import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path (root, up, lastPos, depth, startsWith) as Path
 
-import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale, rotateBy)
+import Yoga.Tree.Svg.Geometry (Position, Positioned, Size, findPosition, scale, rotateBy)
 import Yoga.Tree.Svg.Style as Style
 import Yoga.Tree.Svg.Style (Theme(..))
 
@@ -123,6 +123,13 @@ foldl' :: forall f a b. Foldable f => (b -> a -> b) -> f a -> b -> b
 foldl' = flip <<< foldl
 
 
+type PositionedMap a = Map Path (Positioned a)
+type GraphMap a = Map Path (a /\ List Path)
+type PositionedGraphMap a = GraphMap (Positioned a)
+type PathDupGraphMap a = Map Path (Path /\ a /\ List Path)
+type PathDupMapItem a = (Path /\ a /\ List Path)
+
+
 distributePositions :: forall a. Path -> Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned (Visibility a))
 distributePositions root geom getSize graph =
     filledGraphMap
@@ -132,12 +139,12 @@ distributePositions root geom getSize graph =
         # Graph.fromMap
 
     where
-        graphMap = Graph.toMap graph :: Map Path (a /\ List Path) -- FIXME: List operations are too slow, convert to Arrays and then back?
+        graphMap = Graph.toMap graph :: GraphMap a -- FIXME: List operations are too slow, convert to Arrays and then back?
         filledGraphMap =
             graphMap
                 # addPathsToValues
                 # reduceVisibilityIfNeeded
-            :: Map Path (Path /\ Visibility a /\ List Path)
+            :: PathDupGraphMap (Visibility a)
         zeroPos = { x : 0.0, y : 0.0 }
         childPos parentPos =
             findPosition geom.baseDistance parentPos 0.0 (2.0 * Number.pi / 3.0)
@@ -152,10 +159,10 @@ distributePositions root geom getSize graph =
                 posNum = Int.toNumber rotData.pos
             in -1.0 * (angleStart + (posNum / (neighNum - 1.0)) * total)
 
-        addPathsToValues :: Map Path (a /\ List Path) -> Map Path (Path /\ a /\ List Path)
+        addPathsToValues :: GraphMap a -> PathDupGraphMap a
         addPathsToValues = mapWithIndex ((/\))
 
-        reduceVisibilityIfNeeded :: Map Path (Path /\ a /\ List Path) -> Map Path (Path /\ Visibility a /\ List Path)
+        reduceVisibilityIfNeeded :: PathDupGraphMap a -> PathDupGraphMap (Visibility a)
         reduceVisibilityIfNeeded = case geom.depthLimit /\ geom.childrenLimit of
             Infinite /\ Infinite -> map $ map $ lmap AllVisible
             Infinite /\ Maximum chLimit -> applyChidrenLimit chLimit identity
@@ -171,7 +178,7 @@ distributePositions root geom getSize graph =
         fillBackChildren :: PositionedMap (Visibility a) -> PositionedGraphMap (Visibility a)
         fillBackChildren = mapWithIndex \path cell -> cell /\ (Map.lookup path graphMap <#> Tuple.snd # fromMaybe Nil)
 
-        distribute :: Path /\ Visibility a /\ List Path -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
+        distribute :: PathDupMapItem (Visibility a) -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
         distribute (curPath /\ curValue /\ childPaths) prevPositions =
             case prevPositions # Map.lookup curPath of
                 Nothing -> -- we didn't visit `curPath` as a child of some other node: it's probably a root node
@@ -218,24 +225,31 @@ distributePositions root geom getSize graph =
                 Nothing ->
                     prevPositions
 
-        applyDepthLimit :: forall x y. Int -> (Visibility x -> y) -> Map Path (Path /\ x /\ List Path) -> Map Path (Path /\ y /\ List Path)
+        applyDepthLimit :: forall x y. Int -> (Visibility x -> y) -> PathDupGraphMap x -> PathDupGraphMap y
         applyDepthLimit dLimit f = map processVal <<< Map.filterKeys notTooDeep
             where
                 notTooDeep path = (Path.depth path - Path.depth root) <= dLimit
                 checkVDepth :: Int -> x -> Path -> Visibility x
                 checkVDepth chCount x path | chCount > 0 && (Path.depth path - Path.depth root) == dLimit = DepthLimitReached x
                 checkVDepth _       x _    | otherwise = AllVisible x
-                processVal :: Path /\ x /\ List Path -> Path /\ y /\ List Path
+                processVal :: PathDupMapItem x -> Path /\ y /\ List Path
                 processVal (path /\ x /\ xs) = path /\ (f $ checkVDepth (List.length xs) x path) /\ List.filter notTooDeep xs
 
-        applyChidrenLimit :: forall x y. Int -> (Visibility x -> y) -> Map Path (Path /\ x /\ List Path) -> Map Path (Path /\ y /\ List Path)
+        applyChidrenLimit :: forall x y. Int -> (Visibility x -> y) -> PathDupGraphMap x -> PathDupGraphMap y
         applyChidrenLimit chLimit f = map checkChCount >>> foldl foldF (Nil /\ Map.empty) >>> Tuple.uncurry (flip removeAllDropped)
             where
-                removeAllDropped :: Map Path (Path /\ y /\ List Path) -> List Path -> Map Path (Path /\ y /\ List Path)
-                removeAllDropped = foldl $ flip Map.delete
-                foldF :: (List Path /\ Map Path (Path /\ y /\ List Path)) -> Path /\ y /\ { dropped :: List Path, left :: List Path } -> (List Path /\ Map Path (Path /\ y /\ List Path))
+                -- FIXME: first, collect all paths for the chidren of ... of the "dropped" chidlren, then filter out path duplicates using a `Set`,
+                --         and only then remove all entries from the `Map`: it should be much faster than the current method
+                removeAllDropped :: PathDupGraphMap y -> List Path -> PathDupGraphMap y
+                removeAllDropped = foldr removeOneDropped
+                removeOneDropped :: Path -> PathDupGraphMap y -> PathDupGraphMap y
+                removeOneDropped path theMap =
+                    case Map.lookup path theMap of
+                        Just (_ /\ _ /\ xs) -> xs # foldr removeOneDropped theMap # Map.delete path
+                        Nothing -> theMap # Map.delete path
+                foldF :: (List Path /\ PathDupGraphMap y) -> Path /\ y /\ { dropped :: List Path, left :: List Path } -> (List Path /\ PathDupGraphMap y)
                 foldF (prevDropped /\ collectMap) (p /\ y /\ { dropped, left }) = (prevDropped <> dropped) /\ (Map.insert p (p /\ y /\ left) collectMap)
-                checkChCount :: Path /\ x /\ List Path -> Path /\ y /\ { dropped :: List Path, left :: List Path }
+                checkChCount :: PathDupMapItem x -> Path /\ y /\ { dropped :: List Path, left :: List Path }
                 checkChCount (path /\ x /\ xs) | (List.length xs > chLimit) = path /\ (f $ ChildrenLimitReached chLimit x) /\ { left : List.take chLimit xs, dropped : List.drop chLimit xs }
                 checkChCount (path /\ x /\ xs) | otherwise                  = path /\ (f $ AllVisible x) /\ { dropped : Nil, left : xs }
 
