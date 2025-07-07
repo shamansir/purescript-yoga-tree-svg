@@ -27,11 +27,11 @@ import Data.Int (toNumber) as Int
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Graph (Graph, Edge)
 import Data.Graph (toMap, fromMap, lookup) as Graph
-import Data.Map (empty, lookup, insert, update, filterKeys) as Map
+import Data.Map (empty, lookup, insert, update, filterKeys, delete) as Map
 import Data.Array (fromFoldable, toUnfoldable) as Array
-import Data.Tuple (fst, snd) as Tuple
+import Data.Tuple (fst, snd, uncurry) as Tuple
 import Data.List (List(..))
-import Data.List (length, reverse, filter, take) as List
+import Data.List (length, reverse, filter, take, drop) as List
 import Data.Foldable (class Foldable, foldl)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Tuple.Nested ((/\), type (/\))
@@ -229,12 +229,15 @@ distributePositions root geom getSize graph =
                 processVal (path /\ x /\ xs) = path /\ (f $ checkVDepth (List.length xs) x path) /\ List.filter notTooDeep xs
 
         applyChidrenLimit :: forall x y. Int -> (Visibility x -> y) -> Map Path (Path /\ x /\ List Path) -> Map Path (Path /\ y /\ List Path)
-        applyChidrenLimit chLimit f = map $ map checkChCount
+        applyChidrenLimit chLimit f = map checkChCount >>> foldl foldF (Nil /\ Map.empty) >>> Tuple.uncurry (flip removeAllDropped)
             where
-                checkChCount :: x /\ List Path -> y /\ List Path
-                checkChCount (x /\ xs) | List.length xs <= chLimit = (f $ AllVisible x) /\ xs
-                checkChCount (x /\ xs) | otherwise                 = (f $ ChildrenLimitReached chLimit x) /\ List.take chLimit xs
-
+                removeAllDropped :: Map Path (Path /\ y /\ List Path) -> List Path -> Map Path (Path /\ y /\ List Path)
+                removeAllDropped = foldl $ flip Map.delete
+                foldF :: (List Path /\ Map Path (Path /\ y /\ List Path)) -> Path /\ y /\ { dropped :: List Path, left :: List Path } -> (List Path /\ Map Path (Path /\ y /\ List Path))
+                foldF (prevDropped /\ collectMap) (p /\ y /\ { dropped, left }) = (prevDropped <> dropped) /\ (Map.insert p (p /\ y /\ left) collectMap)
+                checkChCount :: Path /\ x /\ List Path -> Path /\ y /\ { dropped :: List Path, left :: List Path }
+                checkChCount (path /\ x /\ xs) | (List.length xs > chLimit) = path /\ (f $ ChildrenLimitReached chLimit x) /\ { left : List.take chLimit xs, dropped : List.drop chLimit xs }
+                checkChCount (path /\ x /\ xs) | otherwise                  = path /\ (f $ AllVisible x) /\ { dropped : Nil, left : xs }
 
 
 type RenderConfig a =
