@@ -170,8 +170,10 @@ component' modes rconfig mbChildComp =
     , baseDistance : 30.0
     , valueRadius : 5.0
     , scaleLimit : { min : 0.2, max : 50.0 }
-    , depthLimit : SvgTree.Infinite
+    -- , depthLimit : SvgTree.Infinite
+    , depthLimit : SvgTree.Maximum 1
     , childrenLimit : SvgTree.Infinite
+    -- , childrenLimit : SvgTree.Maximum 5
     }
 
   initialState :: Input a -> State a
@@ -294,7 +296,7 @@ component' modes rconfig mbChildComp =
                   }
               ]
               $ pure $ svgMoveTo { x : lo.rect.size.width / 2.0, y : 10.0 }
-              $ SvgTree.renderGraph' (_graphStatus state) gconfig mbChildComp events
+              $ SvgTree.renderGraphFrom' state.focus (_graphStatus state) gconfig mbChildComp events
                 -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
                 $ injectNodeStatuses state
                 $ Tree.toGraph' state.focus

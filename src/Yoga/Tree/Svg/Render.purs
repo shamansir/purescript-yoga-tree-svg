@@ -5,6 +5,7 @@ module Yoga.Tree.Svg.Render
     , GraphConfig, Modes, RenderConfig, Events, Geometry, ValueConfig
     , NodeComponent, NodeComponentInput, GraphHtml
     , renderGraph, renderGraph_, renderGraph'
+    , renderGraphFrom, renderGraphFrom_, renderGraphFrom'
     , renderPreview, renderPreview_, renderPreview'
     , WithStatus, statusColor
     , toValueConfig
@@ -12,6 +13,8 @@ module Yoga.Tree.Svg.Render
     where
 
 import Prelude
+
+-- import Debug as Debug
 
 import Type.Proxy (Proxy(..))
 
@@ -34,8 +37,8 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.Tuple.Nested ((/\), type (/\))
 import Data.Bifunctor (lmap)
 
-import Yoga.Tree.Extended.Path (Path)
-import Yoga.Tree.Extended.Path (up, lastPos, depth, startsWith) as Path
+import Yoga.Tree.Extended.Path (Path(..))
+import Yoga.Tree.Extended.Path (root, up, lastPos, depth, startsWith) as Path
 
 import Yoga.Tree.Svg.Geometry (Position, Positioned, PositionedGraphMap, PositionedMap, Size, findPosition, scale, rotateBy)
 import Yoga.Tree.Svg.Style as Style
@@ -120,18 +123,21 @@ foldl' :: forall f a b. Foldable f => (b -> a -> b) -> f a -> b -> b
 foldl' = flip <<< foldl
 
 
-distributePositions :: forall a. Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned (Visibility a))
-distributePositions geom getSize graph =
-    graphMap
-        # addPathsToValues
-        # reduceVisibilityIfNeeded
+distributePositions :: forall a. Path -> Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned (Visibility a))
+distributePositions root geom getSize graph =
+    filledGraphMap
         # foldl (flip distribute) Map.empty
         # fillBackChildren
         # map (lmap $ scale $ min geom.scaleLimit.max $ max geom.scaleLimit.min geom.scaleFactor)
         # Graph.fromMap
 
     where
-        graphMap = Graph.toMap graph :: Map Path (a /\ List Path)
+        graphMap = Graph.toMap graph :: Map Path (a /\ List Path) -- FIXME: List operations are too slow, convert to Arrays and then back?
+        filledGraphMap =
+            graphMap
+                # addPathsToValues
+                # reduceVisibilityIfNeeded
+            :: Map Path (Path /\ Visibility a /\ List Path)
         zeroPos = { x : 0.0, y : 0.0 }
         childPos parentPos =
             findPosition geom.baseDistance parentPos 0.0 (2.0 * Number.pi / 3.0)
@@ -203,22 +209,24 @@ distributePositions geom getSize graph =
 
         insertChildPos :: Position -> Int -> Int /\ Path -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
         insertChildPos parentPos childrenCount (index /\ childPath) prevPositions =
-            case graphMap # Map.lookup childPath <#> Tuple.fst of
-                Just childValue ->
+            -- case graphMap # Map.lookup childPath <#> Tuple.fst of -- FIXME: maybe there is a faster way to extract value?
+            -- case prevPositions # Map.lookup (unsafeConcat root childPath) <#> _.value of
+            case filledGraphMap # Map.lookup childPath <#> Tuple.snd <#> Tuple.fst of -- FIXME: maybe there is a faster way to access the value?
+                Just visChildValue ->
                     prevPositions
-                        # storeRect childPath (AllVisible childValue) (childPos parentPos childrenCount index) (getSize childPath childValue)
+                        # storeRect childPath visChildValue (childPos parentPos childrenCount index) (getSize childPath $ fromVis visChildValue)
                 Nothing ->
                     prevPositions
 
         applyDepthLimit :: forall x y. Int -> (Visibility x -> y) -> Map Path (Path /\ x /\ List Path) -> Map Path (Path /\ y /\ List Path)
         applyDepthLimit dLimit f = map processVal <<< Map.filterKeys notTooDeep
             where
-                notTooDeep path = Path.depth path <= dLimit
-                checkVDepth :: x -> Path -> Visibility x
-                checkVDepth x path | Path.depth path == dLimit = DepthLimitReached x
-                checkVDepth x _    | otherwise = AllVisible x
+                notTooDeep path = (Path.depth path - Path.depth root) <= dLimit
+                checkVDepth :: Int -> x -> Path -> Visibility x
+                checkVDepth chCount x path | chCount > 0 && (Path.depth path - Path.depth root) == dLimit = DepthLimitReached x
+                checkVDepth _       x _    | otherwise = AllVisible x
                 processVal :: Path /\ x /\ List Path -> Path /\ y /\ List Path
-                processVal (path /\ x /\ xs) = path /\ (f $ checkVDepth x path) /\ List.filter notTooDeep xs
+                processVal (path /\ x /\ xs) = path /\ (f $ checkVDepth (List.length xs) x path) /\ List.filter notTooDeep xs
 
         applyChidrenLimit :: forall x y. Int -> (Visibility x -> y) -> Map Path (Path /\ x /\ List Path) -> Map Path (Path /\ y /\ List Path)
         applyChidrenLimit chLimit f = map $ map checkChCount
@@ -226,7 +234,6 @@ distributePositions geom getSize graph =
                 checkChCount :: x /\ List Path -> y /\ List Path
                 checkChCount (x /\ xs) | List.length xs <= chLimit = (f $ AllVisible x) /\ xs
                 checkChCount (x /\ xs) | otherwise                 = (f $ ChildrenLimitReached chLimit x) /\ List.take chLimit xs
-
 
 
 
@@ -323,7 +330,19 @@ renderGraph_ gstatus config childComp = renderGraph' gstatus config $ Just child
 
 
 renderGraph' :: forall a i m. GraphStatus -> GraphConfig a i -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraph' gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
+renderGraph' = renderGraphFrom' Path.root
+
+
+renderGraphFrom :: forall a i m. Path -> GraphStatus -> GraphConfig a i -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraphFrom focus gstatus config = renderGraphFrom' focus gstatus config Nothing
+
+
+renderGraphFrom_ :: forall a i m. Path -> GraphStatus -> GraphConfig a i -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraphFrom_ focus gstatus config childComp = renderGraphFrom' focus gstatus config $ Just childComp
+
+
+renderGraphFrom' :: forall a i m. Path -> GraphStatus -> GraphConfig a i -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraphFrom' focus gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
         modes   = config.modes :: Modes
         geom    = config.geometry :: Geometry
@@ -334,7 +353,8 @@ renderGraph' gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIn
         valuesGraph :: Graph Path a
         valuesGraph = graph <#> _valueOf
         positionsMap :: PositionedGraphMap (Visibility a)
-        positionsMap = Graph.toMap $ distributePositions geom rconfig.componentSize valuesGraph
+        positionsMap = Graph.toMap $ distributePositions focus geom rconfig.componentSize valuesGraph
+        keyLabelOffset = { x : -1.0 * (geom.valueRadius / 2.0), y : -7.0 }
         renderValue :: Path -> Positioned (Visibility a) -> _
         renderValue nodePath { x, y, value } =
             HS.g
@@ -344,20 +364,23 @@ renderGraph' gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIn
                 , HE.onMouseOver $ const $ events.valueOver  nodePath $ fromVis value
                 , HE.onMouseOut  $ const $ events.valueOut   nodePath $ fromVis value
                 ]
-                $ case (statusOf nodePath) of
-                    KeysNext ->
-                        [ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath $ fromVis value
-                        , HS.text
-                            [ HSA.x $ -1.0 * (geom.valueRadius / 2.0)
-                            , HSA.y $ -7.0
-                            , HSA.fill $ Style.orA Light
-                            ]
-                            [ case Path.lastPos nodePath of -- TODO: pass index of the item instead
-                                Just lastVal -> HH.text $ show lastVal
-                                Nothing -> HH.text "?"
-                            ]
+                $ [ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath $ fromVis value
+                , case (statusOf nodePath) of
+                    KeysNext -> HS.text
+                        [ HSA.x keyLabelOffset.x
+                        , HSA.y keyLabelOffset.y
+                        , HSA.fill $ Style.orA Light
                         ]
-                    _ -> pure $ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath $ fromVis value
+                        [ case Path.lastPos nodePath of -- TODO: pass index of the item instead
+                            Just lastVal -> HH.text $ show lastVal
+                            Nothing -> HH.text "?"
+                        ]
+                    _ -> HS.text [] [ HH.text "" ]
+                , case value of
+                    AllVisible _ -> HS.text [] [ HH.text "" ]
+                    DepthLimitReached _ -> HS.text [] [ HH.text "DEPTH REACH" ]
+                    ChildrenLimitReached n _ -> HS.text [] [ HH.text $ "CHLD REACH: " <> show n ]
+                ]
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
                 Just child ->
