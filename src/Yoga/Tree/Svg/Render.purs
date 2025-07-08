@@ -130,8 +130,8 @@ type PathDupGraphMap a = Map Path (Path /\ a /\ List Path)
 type PathDupMapItem a = (Path /\ a /\ List Path)
 
 
-distributePositions :: forall a. Path -> Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned (Visibility a))
-distributePositions root geom getSize graph =
+distributePositions :: forall a. From -> Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned (Visibility a))
+distributePositions { root, current } geom getSize graph =
     filledGraphMap
         # foldl (flip distribute) Map.empty
         # fillBackChildren
@@ -239,7 +239,7 @@ distributePositions root geom getSize graph =
         applyChidrenLimit chLimit f = map checkChCount >>> foldl foldF (Nil /\ Map.empty) >>> Tuple.uncurry (flip removeAllDropped)
             where
                 -- FIXME: first, collect all paths for the chidren of ... of the "dropped" chidlren, then filter out path duplicates using a `Set`,
-                --         and only then remove all entries from the `Map`: it should be much faster than the current method
+                --        and only then remove all entries from the `Map`: it should be much faster than the current method
                 removeAllDropped :: PathDupGraphMap y -> List Path -> PathDupGraphMap y
                 removeAllDropped = foldr removeOneDropped
                 removeOneDropped :: Path -> PathDupGraphMap y -> PathDupGraphMap y
@@ -319,6 +319,12 @@ type NodeComponentInput a =
     }
 
 
+type From =
+    { root :: Path
+    , current :: Path
+    }
+
+
 type GraphHtml m i  = HTML (H.ComponentSlot Slots m i) i
 
 
@@ -347,19 +353,19 @@ renderGraph_ gstatus config childComp = renderGraph' gstatus config $ Just child
 
 
 renderGraph' :: forall a i m. GraphStatus -> GraphConfig a i -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraph' = renderGraphFrom' Path.root
+renderGraph' = renderGraphFrom' { root : Path.root, current : Path.root }
 
 
-renderGraphFrom :: forall a i m. Path -> GraphStatus -> GraphConfig a i -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraphFrom focus gstatus config = renderGraphFrom' focus gstatus config Nothing
+renderGraphFrom :: forall a i m. From -> GraphStatus -> GraphConfig a i -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraphFrom from gstatus config = renderGraphFrom' from gstatus config Nothing
 
 
-renderGraphFrom_ :: forall a i m. Path -> GraphStatus -> GraphConfig a i -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraphFrom_ focus gstatus config childComp = renderGraphFrom' focus gstatus config $ Just childComp
+renderGraphFrom_ :: forall a i m. From -> GraphStatus -> GraphConfig a i -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraphFrom_ from gstatus config childComp = renderGraphFrom' from gstatus config $ Just childComp
 
 
-renderGraphFrom' :: forall a i m. Path -> GraphStatus -> GraphConfig a i -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
-renderGraphFrom' focus gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
+renderGraphFrom' :: forall a i m. From -> GraphStatus -> GraphConfig a i -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
         modes   = config.modes :: Modes
         geom    = config.geometry :: Geometry
@@ -370,7 +376,7 @@ renderGraphFrom' focus gstatus config mbComponent events graph = foldl (<>) [] $
         valuesGraph :: Graph Path a
         valuesGraph = graph <#> _valueOf
         positionsMap :: PositionedGraphMap (Visibility a)
-        positionsMap = Graph.toMap $ distributePositions focus geom rconfig.componentSize valuesGraph
+        positionsMap = Graph.toMap $ distributePositions from geom rconfig.componentSize valuesGraph
         keyLabelOffset = { x : -1.0 * (geom.valueRadius / 2.0), y : -7.0 }
         renderValue :: Path -> Positioned (Visibility a) -> _
         renderValue nodePath { x, y, value } =

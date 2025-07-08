@@ -296,7 +296,14 @@ component' modes rconfig mbChildComp =
                   }
               ]
               $ pure $ svgMoveTo { x : lo.rect.size.width / 2.0, y : 10.0 }
-              $ SvgTree.renderGraphFrom' state.focus (_graphStatus state) gconfig mbChildComp events
+              $ SvgTree.renderGraphFrom'
+                  { root : state.focus
+                  , current : fromMaybe Path.root state.selection
+                  }
+                  (_graphStatus state)
+                  gconfig
+                  mbChildComp
+                  events
                 -- FIXME: passing `state.focus` is needed only because else we would first fill already focused `Tree` with `Paths` when converting it to `Graph`
                 $ injectNodeStatuses state
                 $ Tree.toGraph' state.focus
