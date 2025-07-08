@@ -14,8 +14,6 @@ module Yoga.Tree.Svg.Render
 
 import Prelude
 
--- import Debug as Debug
-
 import Type.Proxy (Proxy(..))
 
 import Prim.Row (class Cons) as Row
@@ -24,7 +22,7 @@ import Data.Symbol (class IsSymbol)
 import Data.Number (pi) as Number
 import Data.Map (Map)
 import Data.Int (toNumber) as Int
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Graph (Graph, Edge)
 import Data.Graph (toMap, fromMap, lookup) as Graph
 import Data.Map (empty, lookup, insert, update, filterKeys, delete) as Map
@@ -108,10 +106,16 @@ data SoftLimit
     | Maximum Int
 
 
+data ChLimit
+    = AtStart Int
+    | Between Int Int
+    | AtEnd Int Int
+
+
 data Visibility a
     = AllVisible a
     | DepthLimitReached a
-    | ChildrenLimitReached Int a
+    | ChildrenLimitReached ChLimit a
     -- | ChildrenBefore Int a
     -- | ChidlrenAfter Int a
 
@@ -158,6 +162,7 @@ distributePositions { root, current } geom getSize graph =
                 neighNum = Int.toNumber rotData.neighbours
                 posNum = Int.toNumber rotData.pos
             in -1.0 * (angleStart + (posNum / (neighNum - 1.0)) * total)
+        addRoot (Path other) = case root of Path rootP -> Path (rootP <> other)
 
         addPathsToValues :: GraphMap a -> PathDupGraphMap a
         addPathsToValues = mapWithIndex ((/\))
@@ -250,8 +255,27 @@ distributePositions { root, current } geom getSize graph =
                 foldF :: (List Path /\ PathDupGraphMap y) -> Path /\ y /\ { dropped :: List Path, left :: List Path } -> (List Path /\ PathDupGraphMap y)
                 foldF (prevDropped /\ collectMap) (p /\ y /\ { dropped, left }) = (prevDropped <> dropped) /\ (Map.insert p (p /\ y /\ left) collectMap)
                 checkChCount :: PathDupMapItem x -> Path /\ y /\ { dropped :: List Path, left :: List Path }
-                checkChCount (path /\ x /\ xs) | (List.length xs > chLimit) = path /\ (f $ ChildrenLimitReached chLimit x) /\ { left : List.take chLimit xs, dropped : List.drop chLimit xs }
-                checkChCount (path /\ x /\ xs) | otherwise                  = path /\ (f $ AllVisible x) /\ { dropped : Nil, left : xs }
+                checkChCount (path /\ x /\ xs) | (List.length xs > chLimit) =
+                    if (Path.startsWith current path) && (Path.depth current == (Path.depth path + 1)) then
+                        let
+                            childrenCount = List.length xs
+                            mbSelectionIdx = Path.lastPos current
+                            firstSplit  = maybe 0 (\selIdx -> max 0             $ selIdx + 1 - chLimit) mbSelectionIdx
+                            secondSplit = min childrenCount $ firstSplit + chLimit
+                            prefix = List.take firstSplit xs
+                            withSelection = List.take (secondSplit - firstSplit) $ List.drop firstSplit xs
+                            suffix = List.drop secondSplit xs
+                            limitValue = if firstSplit == 0
+                                            then AtStart secondSplit
+                                            else if secondSplit == childrenCount
+                                                then AtEnd firstSplit secondSplit
+                                                else Between firstSplit secondSplit
+                        in
+                        path /\ (f $ ChildrenLimitReached limitValue x) /\ { left : withSelection, dropped : prefix <> suffix }
+                    else
+                        path /\ (f $ ChildrenLimitReached (AtStart chLimit) x) /\ { left : List.take chLimit xs, dropped : List.drop chLimit xs }
+                checkChCount (path /\ x /\ xs) | otherwise
+                      = path /\ (f $ AllVisible x) /\ { dropped : Nil, left : xs }
 
 
 type RenderConfig a =
@@ -402,7 +426,13 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
                 , case value of
                     AllVisible _ -> HS.text [] [ HH.text "" ]
                     DepthLimitReached _ -> HS.text [] [ HH.text "DEPTH REACH" ]
-                    ChildrenLimitReached n _ -> HS.text [] [ HH.text $ "CHLD REACH: " <> show n ]
+                    ChildrenLimitReached chLimit _ ->
+                        HS.text []
+                            [ HH.text $ "CHLD REACH: " <> case chLimit of
+                                AtStart n -> "0:" <> show (n - 1) <> "..."
+                                Between a b -> "..." <> show a <> ":" <> show (b - 1) <> "..."
+                                AtEnd a b -> "..." <> show a <> ":" <> show (b - 1)
+                            ]
                 ]
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
