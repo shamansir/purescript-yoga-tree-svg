@@ -7,22 +7,22 @@ module Yoga.Tree.Svg
 import Prelude
 
 import Effect.Class (class MonadEffect)
-import Effect.Console (log) as Console
 
 import Data.Array ((:))
 import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse, replicate, groupBy) as Array
 import Data.Array.NonEmpty as NEA
 import Data.FunctorWithIndex (mapWithIndex)
+import Data.Foldable (foldl)
 import Data.Bifunctor (lmap)
 import Data.Graph (Graph)
 import Data.Graph (fromMap, toMap) as Graph
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
-import Data.Set (empty, insert, delete, isEmpty, member, fromFoldable, size) as Set
+import Data.Set (empty, insert, delete, member, size) as Set
 import Data.String (take, toLower, joinWith) as String
 import Data.Tuple (fst, snd) as Tuple
 import Data.Tuple.Nested ((/\))
-import Data.Int (floor, toNumber) as Int
+import Data.Int (floor, pow) as Int
 
 import Halogen as H
 import Halogen.HTML as HH
@@ -32,9 +32,9 @@ import Halogen.Query.Event (eventListener)
 import Halogen.Svg.Attributes as HSA
 import Halogen.Svg.Elements as HS
 
-import Web.HTML (window, HTMLDocument)
+import Web.HTML (window)
 import Web.HTML.HTMLDocument as HTMLDocument
-import Web.HTML.Window (document, history)
+import Web.HTML.Window (document)
 import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
 import Web.UIEvent.MouseEvent as ME
@@ -45,7 +45,7 @@ import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value, children) as Tree
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Extended.Path (Path(..))
-import Yoga.Tree.Extended.Path (find, root, toArray, depth, advance, safeAdvance, Dir(..), advanceDir, isNextFor) as Path
+import Yoga.Tree.Extended.Path (find, root, toArray, depth, safeAdvance, Dir(..), advanceDir, isNextFor) as Path
 import Yoga.Tree.Extended.Convert as TreeConv
 import Yoga.Tree.Svg.Render (WithStatus, statusColor)
 import Yoga.Tree.Svg.Render as SvgTree
@@ -142,6 +142,7 @@ type State a =
     , foldMode :: FoldMode
     , depthLimit :: SvgTree.SoftLimit
     , childrenLimit :: SvgTree.SoftLimit
+    , numKeyBuffer :: Array Int
     }
 
 
@@ -202,6 +203,7 @@ component' modes rconfig mbChildComp =
     , foldMode : OnlyFocus
     , depthLimit : SvgTree.Infinite
     , childrenLimit : SvgTree.Infinite
+    , numKeyBuffer : []
     }
 
   receive :: Input a -> State a -> State a
@@ -347,6 +349,9 @@ component' modes rconfig mbChildComp =
                     ]
                 Nothing ->
                   HH.text ""
+            , if Array.length state.numKeyBuffer > 0 then
+                HH.div [] [ HH.text $ String.joinWith "" $ show <$> Array.reverse state.numKeyBuffer ]
+              else HH.text ""
             ]
 
         {- Current Preview(s) or Selection -}
@@ -592,6 +597,11 @@ component' modes rconfig mbChildComp =
       , previewAt state nodeMode nodePath
       ]
 
+  computeNum :: Array Int -> Int -> Int
+  computeNum digits n =
+    n + Tuple.snd (foldl (\(pow /\ sum) digit -> (pow * 10) /\ (digit * pow + sum)) (10 /\ 0) digits)
+
+  updateFocus :: Path -> State a -> State a
   updateFocus newPath s =
     s
       { focus = newPath
@@ -703,6 +713,7 @@ component' modes rconfig mbChildComp =
         , preview = None
         , treeTextMode = false
         , editingSomeText = false
+        , numKeyBuffer = []
         }
   handleKey key | String.toLower key == "backspace" =
       H.modify_ \s ->
@@ -729,9 +740,14 @@ component' modes rconfig mbChildComp =
     _whenJust s.selection \selPath -> do
       _whenJust (_isNumberKey key) \num ->
         _whenJust (Path.find selPath s.tree) \subTree ->
-          if num < Array.length (Tree.children subTree) then
-            H.put $ s { selection = Just $ Path.safeAdvance selPath num s.tree }
-          else pure unit
+          let
+            bufferedNums  = Array.length s.numKeyBuffer
+            childrenCount = Array.length $ Tree.children subTree
+            completeNum   = if bufferedNums > 0 then computeNum s.numKeyBuffer num else num
+          in if (childrenCount <= Int.pow 10 (bufferedNums + 1)) && (completeNum < childrenCount) then
+            H.put $ s { selection = Just $ Path.safeAdvance selPath completeNum s.tree, numKeyBuffer = [] }
+          else
+            H.put $ s { numKeyBuffer = if bufferedNums < 3 then num : s.numKeyBuffer else [] }
       _whenJust (_isArrowKey key) $ \dir ->
           let nextPath = Path.advanceDir selPath dir s.tree
           in
@@ -739,6 +755,7 @@ component' modes rconfig mbChildComp =
               H.put $ updateFocus nextPath $ s { selection = Just nextPath }
             else
               H.put $ s { selection = Just nextPath }
+
 
 _whenJust :: forall a m. Applicative m => Maybe a -> (a -> m Unit) -> m Unit
 _whenJust maybe f =
