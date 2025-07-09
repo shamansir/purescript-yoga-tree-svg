@@ -48,7 +48,7 @@ import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path (find, root, toArray, depth, safeAdvance, Dir(..), advanceDir, isNextFor) as Path
 import Yoga.Tree.Extended.Convert as TreeConv
 import Yoga.Tree.Svg.Render (WithStatus, statusColor)
-import Yoga.Tree.Svg.Render as SvgTree
+import Yoga.Tree.Svg.Render as YST
 import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
 import Yoga.Tree.Svg.SvgItem (foldLabel, pinnedLine, _export, _import, default) as SvgI
 import Yoga.Tree.Svg.Style as Style
@@ -112,9 +112,10 @@ type Input a =
     , size :: { width :: Number, height :: Number }
     , elements :: Set L.Element
     , theme :: Style.Theme
-    , depthLimit :: SvgTree.SoftLimit
-    , childrenLimit :: SvgTree.SoftLimit
+    , depthLimit :: YST.SoftLimit
+    , childrenLimit :: YST.SoftLimit
     , mbFocus :: Maybe Path
+    , filters :: Array (YST.Filter a)
     }
 
 
@@ -140,24 +141,25 @@ type State a =
     , theme :: Style.Theme
     , exportMode :: ExportMode
     , foldMode :: FoldMode
-    , depthLimit :: SvgTree.SoftLimit
-    , childrenLimit :: SvgTree.SoftLimit
+    , depthLimit :: YST.SoftLimit
+    , childrenLimit :: YST.SoftLimit
     , numKeyBuffer :: Array Int
+    , filters :: Array (YST.Filter a)
     }
 
 
-type NodeComponent m a = SvgTree.NodeComponent m a
+type NodeComponent m a = YST.NodeComponent m a
 
 
-component :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> H.Component query (Input a) output m
+component :: forall a query output m. MonadEffect m => IsSvgTreeItem a => YST.Modes -> YST.RenderConfig a -> H.Component query (Input a) output m
 component modes rconfig = component' modes rconfig Nothing
 
 
-component_ :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> NodeComponent m a -> H.Component query (Input a) output m
+component_ :: forall a query output m. MonadEffect m => IsSvgTreeItem a => YST.Modes -> YST.RenderConfig a -> NodeComponent m a -> H.Component query (Input a) output m
 component_ modes rconfig childComp = component' modes rconfig (Just childComp)
 
 
-component' :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
+component' :: forall a query output m. MonadEffect m => IsSvgTreeItem a => YST.Modes -> YST.RenderConfig a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
 component' modes rconfig mbChildComp =
   H.mkComponent
     { initialState
@@ -172,22 +174,22 @@ component' modes rconfig mbChildComp =
 
   scaleLimit = { min : 0.2, max : 50.0 }
 
-  geometry :: State a -> SvgTree.Geometry
+  geometry :: State a -> YST.Geometry
   geometry state =
     { scaleFactor : state.zoom * 5.0
     , baseDistance : 30.0
     , valueRadius : 5.0
     , scaleLimit
     , depthLimit : state.depthLimit
-    -- , depthLimit : SvgTree.Maximum 1
+    -- , depthLimit : YST.Maximum 1
     , childrenLimit : state.childrenLimit
-    -- , childrenLimit : SvgTree.Maximum 5
+    -- , childrenLimit : YST.Maximum 5
     }
 
   initialState :: Input a -> State a
-  initialState { tree, size, elements, theme } =
+  initialState i@{ tree, size, elements, theme, filters } =
     { tree
-    , focus : Path.root
+    , focus : fromMaybe Path.root i.mbFocus
     , history : [ Path.root ]
     , zoom : 1.0
     , size
@@ -201,13 +203,14 @@ component' modes rconfig mbChildComp =
     , theme
     , exportMode : Json
     , foldMode : OnlyFocus
-    , depthLimit : SvgTree.Infinite
-    , childrenLimit : SvgTree.Infinite
+    , depthLimit : i.depthLimit
+    , childrenLimit : i.childrenLimit
     , numKeyBuffer : []
+    , filters
     }
 
   receive :: Input a -> State a -> State a
-  receive { tree, size, elements, depthLimit, childrenLimit, mbFocus, theme } =
+  receive { tree, size, elements, depthLimit, childrenLimit, mbFocus, theme, filters } =
     _
       { size = size
       , tree = tree
@@ -216,57 +219,59 @@ component' modes rconfig mbChildComp =
       , childrenLimit = childrenLimit
       , focus = fromMaybe Path.root mbFocus
       , theme = theme
+      , filters = filters
       }
 
-  events :: SvgTree.Events (Action a) a
+  events :: YST.Events (Action a) a
   events =
     { valueClick : NodeClick
     , valueOver  : NodeOver
     , valueOut   : NodeOut
     }
 
-  graphConfig :: State a -> SvgTree.GraphConfig a (Action a)
+  graphConfig :: State a -> YST.GraphConfig a (Action a)
   graphConfig state =
     { geometry : geometry state
     , events
     , modes
     , render : rconfig
     , theme : state.theme
+    , filters : state.filters
     }
 
-  valueConfig :: State a -> SvgTree.NodeMode -> SvgTree.ValueConfig a
-  valueConfig state nodeMode = graphConfig state # SvgTree.toValueConfig # _ { nodeMode = nodeMode }
+  valueConfig :: State a -> YST.NodeMode -> YST.ValueConfig a
+  valueConfig state nodeMode = graphConfig state # YST.toValueConfig # _ { nodeMode = nodeMode }
 
-  previewAt :: State a -> SvgTree.NodeMode -> Path -> HH.HTML _ (Action a)
+  previewAt :: State a -> YST.NodeMode -> Path -> HH.HTML _ (Action a)
   previewAt state nodeMode previewPath =
     case Path.find previewPath state.tree of
       Just previewNode ->
-        SvgTree.renderPreview' (valueConfig state nodeMode) mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
+        YST.renderPreview' (valueConfig state nodeMode) mbChildComp YST.Normal previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
 
-  statusOf :: State a -> Path -> SvgTree.NodeStatus
+  statusOf :: State a -> Path -> YST.NodeStatus
   statusOf state path =
     let
         checkFocus =
           if state.focus == path
-            then SvgTree.FocusRoot
-            else SvgTree.Normal
+            then YST.FocusRoot
+            else YST.Normal
         checkPreview =
           case state.preview of
             Focused previewPath ->
-               if previewPath == path then SvgTree.HoverFocus else checkFocus
+               if previewPath == path then YST.HoverFocus else checkFocus
             LostFocus previewPath ->
-               if previewPath == path then SvgTree.HoverGhost else checkFocus
+               if previewPath == path then YST.HoverGhost else checkFocus
             None -> checkFocus
         checkSelection =
           case state.selection of
             Just selPath ->
               if selPath == path
-                then SvgTree.Selected
+                then YST.Selected
                 else
                   if Path.isNextFor path selPath
-                  then SvgTree.KeysNext
+                  then YST.KeysNext
                   else checkPreview
             Nothing ->
               checkPreview
@@ -290,7 +295,7 @@ component' modes rconfig mbChildComp =
       )
 
     where
-      gconfig = graphConfig state :: SvgTree.GraphConfig a (Action a)
+      gconfig = graphConfig state :: YST.GraphConfig a (Action a)
 
       htmlMoveTo pos =
         HH.div
@@ -316,7 +321,7 @@ component' modes rconfig mbChildComp =
                   }
               ]
               $ pure $ svgMoveTo { x : lo.rect.size.width / 2.0, y : 10.0 }
-              $ SvgTree.renderGraphFrom'
+              $ YST.renderGraphFrom'
                   { root : state.focus
                   , current : fromMaybe Path.root state.selection
                   }
@@ -579,7 +584,7 @@ component' modes rconfig mbChildComp =
       >>> map NEA.toArray
       >>> map (map Tuple.snd)
 
-  wrapPinUnpin :: State a -> SvgTree.NodeMode -> SvgTree.RenderConfig a -> Boolean -> Path -> HH.HTML _ (Action a)
+  wrapPinUnpin :: State a -> YST.NodeMode -> YST.RenderConfig a -> Boolean -> Path -> HH.HTML _ (Action a)
   wrapPinUnpin state nodeMode config allowGo nodePath =
     HH.div
       [ HP.style Style.pinBox ]
@@ -656,6 +661,7 @@ component' modes rconfig mbChildComp =
           , depthLimit : s.depthLimit
           , childrenLimit : s.childrenLimit
           , mbFocus : Nothing
+          , filters : s.filters
           }
     FocusOn path ->
       H.modify_ $ updateFocus path
@@ -849,7 +855,7 @@ _pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
       else _pathStepButtonRaw true  buttonLabel Nothing
 
 
-renderPath :: forall p a. PathMode -> SvgTree.RenderConfig a -> Tree a -> Path -> HH.HTML p (Action a)
+renderPath :: forall p a. PathMode -> YST.RenderConfig a -> Tree a -> Path -> HH.HTML p (Action a)
 renderPath Breadcrumbs config tree path =
   case Path.toArray path of
     [] ->
@@ -872,12 +878,12 @@ renderPath SingleGo config tree path =
     ]
 
 
-_graphStatus :: forall a. State a -> SvgTree.GraphStatus
+_graphStatus :: forall a. State a -> YST.GraphStatus
 _graphStatus state =
   case state.selection of
-    Just _ -> SvgTree.GKeysFocus
+    Just _ -> YST.GKeysFocus
     Nothing ->
       case state.preview of
-        Focused _   -> SvgTree.GHoverFocus
-        LostFocus _ -> SvgTree.GGhostFocus
-        None        -> SvgTree.GNormal
+        Focused _   -> YST.GHoverFocus
+        LostFocus _ -> YST.GGhostFocus
+        None        -> YST.GNormal

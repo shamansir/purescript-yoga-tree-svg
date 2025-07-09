@@ -11,7 +11,7 @@ import Data.Int as Int
 import Data.Array (replicate, catMaybes) as Array
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.String (Pattern(..))
-import Data.String (length, split, drop) as String
+import Data.String (length, split, drop, contains) as String
 import Data.Tuple.Nested ((/\))
 import Data.Map (fromFoldable, lookup) as Map
 
@@ -41,7 +41,7 @@ import Yoga.Tree.Extended (leaf) as Tree
 import Yoga.Tree.Extended.Path (Path) as Tree
 import Yoga.Tree.Extended.Path (fromArray) as Path
 import Yoga.Tree.Svg (NodeComponent, component_, all) as YST
-import Yoga.Tree.Svg.Render (Modes, RenderConfig, NodeMode(..), EdgeMode(..), SoftLimit(..)) as YST
+import Yoga.Tree.Svg.Render (Modes, RenderConfig, NodeMode(..), EdgeMode(..), SoftLimit(..), Filter(..)) as YST
 import Yoga.Tree.Svg.Style (Theme(..), tx, tx2, tx3) as YST
 import Yoga.Tree.Svg.SvgItem (class IsTreeItem, class IsSvgTreeItem)
 import Yoga.Tree.Svg.SvgItem as YSTI
@@ -78,6 +78,7 @@ type State a =
   , mbChildrenLimit :: Maybe Int
   , mbDepthLimit :: Maybe Int
   , theme :: YST.Theme
+  , filters :: Array (YST.Filter a)
   }
 
 
@@ -283,6 +284,7 @@ component startFromTree =
     , theme : YST.Light
     , mbDepthLimit : Nothing
     , mbChildrenLimit : Nothing
+    , filters : []
     }
 
   defaultSize = { width : 1000.0, height : 1000.0 }
@@ -300,6 +302,7 @@ component startFromTree =
       , depthLimit : maybe YST.Infinite YST.Maximum state.mbDepthLimit
       , childrenLimit : maybe YST.Infinite YST.Maximum state.mbChildrenLimit
       , mbFocus : state.mbFocus
+      , filters : state.filters
       }
 
   child :: YST.NodeComponent m DemoItem
@@ -373,6 +376,7 @@ component startFromTree =
             <#> Path.fromArray
         mbDepthLimit = Map.lookup "depth" optsMap >>= Int.fromString
         mbChildrenLimit = Map.lookup "children" optsMap >>= Int.fromString
+        mbFilter = Map.lookup "filter" optsMap
 
       H.liftEffect $ Console.log opts
 
@@ -382,4 +386,15 @@ component startFromTree =
         , mbFocus = mbFocus
         , mbDepthLimit = mbDepthLimit
         , mbChildrenLimit = mbChildrenLimit
+        , filters = case mbFilter of
+            Just filterString -> [ YST.Filter $ const $ contains filterString ]
+            Nothing -> []
         }
+
+
+contains :: String -> DemoItem -> Boolean
+contains str =
+  String.contains (Pattern str)
+  <<< case _ of
+      IntItem n -> show n
+      StrItem str -> str
