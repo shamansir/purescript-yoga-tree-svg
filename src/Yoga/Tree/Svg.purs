@@ -172,8 +172,8 @@ component' modes rconfig mbChildComp =
     , scaleLimit : { min : 0.2, max : 50.0 }
     , depthLimit : SvgTree.Infinite
     -- , depthLimit : SvgTree.Maximum 1
-    -- , childrenLimit : SvgTree.Infinite
-    , childrenLimit : SvgTree.Maximum 5
+    , childrenLimit : SvgTree.Infinite
+    -- , childrenLimit : SvgTree.Maximum 5
     }
 
   initialState :: Input a -> State a

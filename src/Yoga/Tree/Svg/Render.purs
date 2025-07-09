@@ -402,6 +402,11 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
         positionsMap :: PositionedGraphMap (Visibility a)
         positionsMap = Graph.toMap $ distributePositions from geom rconfig.componentSize valuesGraph
         keyLabelOffset = { x : -1.0 * (geom.valueRadius / 2.0), y : -7.0 }
+        depthLimitOffset = { x : -1.0 * (geom.valueRadius / 2.0), y : 3.0 * geom.valueRadius }
+        chOffsetY = 3.0 -- 0.0
+        childLimitOffsetR = { x : 3.0 * (geom.valueRadius / 2.0), y : chOffsetY }
+        childLimitOffsetL = { x : -1.0 * (geom.valueRadius / 2.0) - 15.0, y : chOffsetY }
+
         renderValue :: Path -> Positioned (Visibility a) -> _
         renderValue nodePath { x, y, value } =
             HS.g
@@ -413,26 +418,29 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
                 ]
                 $ [ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath $ fromVis value
                 , case (statusOf nodePath) of
-                    KeysNext -> HS.text
-                        [ HSA.x keyLabelOffset.x
-                        , HSA.y keyLabelOffset.y
-                        , HSA.fill $ Style.orA Light
-                        ]
-                        [ case Path.lastPos nodePath of -- TODO: pass index of the item instead
-                            Just lastVal -> HH.text $ show lastVal
-                            Nothing -> HH.text "?"
-                        ]
-                    _ -> HS.text [] [ HH.text "" ]
+                    KeysNext ->
+                        textAt keyLabelOffset Style.orA $
+                            case Path.lastPos nodePath of -- TODO: pass index of the item instead
+                            Just lastVal -> show lastVal
+                            Nothing -> "?"
+                    _ -> noText
                 , case value of
-                    AllVisible _ -> HS.text [] [ HH.text "" ]
-                    DepthLimitReached _ -> HS.text [] [ HH.text "DEPTH REACH" ]
+                    AllVisible _ -> noText
+                    DepthLimitReached _ ->
+                        textAt depthLimitOffset Style.maB "↓"
                     ChildrenLimitReached chLimit _ ->
-                        HS.text []
-                            [ HH.text $ "CHLD REACH: " <> case chLimit of
-                                AtStart n -> "0:" <> show (n - 1) <> "..."
-                                Between a b -> "..." <> show a <> ":" <> show (b - 1) <> "..."
-                                AtEnd a b -> "..." <> show a <> ":" <> show (b - 1)
-                            ]
+                        case chLimit of
+                            AtStart _ ->
+                                textAt childLimitOffsetR Style.maB "->"
+                            Between _ _ ->
+                                HS.g []
+                                    [ textAt childLimitOffsetL Style.maB "<-"
+                                    , textAt childLimitOffsetR Style.maB "->"
+                                    ]
+                            AtEnd _ _ -> textAt childLimitOffsetL Style.maB "<-"
+                            -- AtStart n -> "0-" <> show (n - 1) <> "->"
+                            -- Between a b -> "<-" <> show a <> "-" <> show (b - 1) <> "->"
+                            -- AtEnd a b -> "<-" <> show a <> "-" <> show (b - 1)
                 ]
         renderEdge parentPath parent childPath =
             case Map.lookup childPath positionsMap <#> Tuple.fst of
@@ -446,10 +454,20 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
                             , end   : { path : childPath,  pos : { x : child.x,  y: child.y  }, value : fromVis $ child.value  }
                             }
                 Nothing -> HS.g [] []
+
         renderNode :: Path -> (Positioned (Visibility a) /\ List Path) -> _
         renderNode nodePath (va /\ paths) =
             (renderEdge nodePath va <$> Array.fromFoldable paths)
             <> [ renderValue nodePath va ]
+
+        noText = HS.text [] [ HH.text "" ]
+        textAt pos colorF text =
+            HS.text
+                [ HSA.x pos.x
+                , HSA.y pos.y
+                , HSA.fill $ colorF config.theme
+                ]
+                [ HH.text text ]
 
 
 renderPreview :: forall a i m. ValueConfig a -> NodeStatus -> Path -> a -> GraphHtml m i
