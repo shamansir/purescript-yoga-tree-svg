@@ -75,6 +75,8 @@ type State a =
   { tree :: Tree a
   , window :: Maybe { width :: Number, height :: Number }
   , mbFocus :: Maybe Tree.Path
+  , mbChildrenLimit :: Maybe Int
+  , mbDepthLimit :: Maybe Int
   , theme :: YST.Theme
   }
 
@@ -274,7 +276,14 @@ component startFromTree =
     }
   where
   initialState :: input -> State DemoItem
-  initialState _ = { tree : startFromTree, window : Nothing, mbFocus : Nothing, theme : YST.Light }
+  initialState _ =
+    { tree : startFromTree
+    , window : Nothing
+    , mbFocus : Nothing
+    , theme : YST.Light
+    , mbDepthLimit : Nothing
+    , mbChildrenLimit : Nothing
+    }
 
   defaultSize = { width : 1000.0, height : 1000.0 }
 
@@ -288,9 +297,9 @@ component startFromTree =
       , size : reduceSize $ fromMaybe defaultSize state.window
       , elements : YST.all
       , theme : state.theme
-      , depthLimit : YST.Infinite
-      , childrenLimit : YST.Infinite
-      , focus : state.mbFocus
+      , depthLimit : maybe YST.Infinite YST.Maximum state.mbDepthLimit
+      , childrenLimit : maybe YST.Infinite YST.Maximum state.mbChildrenLimit
+      , mbFocus : state.mbFocus
       }
 
   child :: YST.NodeComponent m DemoItem
@@ -357,7 +366,13 @@ component startFromTree =
             "light" -> YST.Light
             _ -> YST.Light
         mbFocus =
-          Map.lookup "focus" optsMap <#> String.split (Pattern "-") <#> map Int.fromString <#> Array.catMaybes <#> Path.fromArray
+          Map.lookup "path" optsMap
+            <#> String.split (Pattern "-")
+            <#> map Int.fromString
+            <#> Array.catMaybes
+            <#> Path.fromArray
+        mbDepthLimit = Map.lookup "depth" optsMap >>= Int.fromString
+        mbChildrenLimit = Map.lookup "children" optsMap >>= Int.fromString
 
       H.liftEffect $ Console.log opts
 
@@ -365,4 +380,6 @@ component startFromTree =
         { tree = example
         , theme = fromMaybe s.theme mbTheme
         , mbFocus = mbFocus
+        , mbDepthLimit = mbDepthLimit
+        , mbChildrenLimit = mbChildrenLimit
         }

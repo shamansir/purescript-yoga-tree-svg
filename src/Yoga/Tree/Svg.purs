@@ -114,7 +114,7 @@ type Input a =
     , theme :: Style.Theme
     , depthLimit :: SvgTree.SoftLimit
     , childrenLimit :: SvgTree.SoftLimit
-    , focus :: Maybe Path
+    , mbFocus :: Maybe Path
     }
 
 
@@ -205,14 +205,14 @@ component' modes rconfig mbChildComp =
     }
 
   receive :: Input a -> State a -> State a
-  receive { tree, size, elements, depthLimit, childrenLimit, focus, theme } =
+  receive { tree, size, elements, depthLimit, childrenLimit, mbFocus, theme } =
     _
       { size = size
       , tree = tree
       , elements = elements
       , depthLimit = depthLimit
       , childrenLimit = childrenLimit
-      , focus = fromMaybe Path.root focus
+      , focus = fromMaybe Path.root mbFocus
       , theme = theme
       }
 
@@ -639,7 +639,7 @@ component' modes rconfig mbChildComp =
           , theme : s.theme
           , depthLimit : s.depthLimit
           , childrenLimit : s.childrenLimit
-          , focus : Nothing
+          , mbFocus : Nothing
           }
     FocusOn path ->
       H.modify_ $ updateFocus path
