@@ -35,7 +35,7 @@ The SVG Renderer for [Yoga Tree](https://pursuit.purescript.org/packages/purescr
 
 * Run demo with `sh serve.sh` or, if you are using Nix OS, `sh ./nix-serve.sh` in `nix develop`;
 * Select the example using the hash in the URL:
-    `#init` - initial example;
-    `#many` - many items example (more than 1.000?);
-    `#simple` - simple example;
-    `#letnum` - letters & numbers: a varierty of letter variants for latin alphabet;
+    `#ex=init` - initial example;
+    `#ex=many` - many items example (more than 1.000?);
+    `#ex=simple` - simple example;
+    `#ex=letnum` - letters & numbers: a varierty of letter variants for latin alphabet;

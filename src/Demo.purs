@@ -8,9 +8,13 @@ import Foreign (F)
 
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Int as Int
-import Data.Array (replicate) as Array
+import Data.Array (replicate, catMaybes) as Array
 import Data.FunctorWithIndex (mapWithIndex)
-import Data.String (length) as String
+import Data.String (Pattern(..))
+import Data.String (length, split, drop) as String
+import Data.Tuple.Nested ((/\))
+import Data.Map (fromFoldable, lookup) as Map
+
 import Control.Alt ((<|>))
 
 import Effect (Effect)
@@ -33,9 +37,11 @@ import Control.Comonad.Cofree ((:<))
 import Yoga.Tree (Tree)
 -- import Yoga.Tree as Tree
 import Yoga.Tree.Extended ((:<~))
-import Yoga.Tree.Extended as Tree
+import Yoga.Tree.Extended (leaf) as Tree
+import Yoga.Tree.Extended.Path (Path) as Tree
+import Yoga.Tree.Extended.Path (fromArray) as Path
 import Yoga.Tree.Svg (NodeComponent, component_, all) as YST
-import Yoga.Tree.Svg.Render (Modes, RenderConfig, NodeMode(..), EdgeMode(..)) as YST
+import Yoga.Tree.Svg.Render (Modes, RenderConfig, NodeMode(..), EdgeMode(..), SoftLimit(..)) as YST
 import Yoga.Tree.Svg.Style (Theme(..), tx, tx2, tx3) as YST
 import Yoga.Tree.Svg.SvgItem (class IsTreeItem, class IsSvgTreeItem)
 import Yoga.Tree.Svg.SvgItem as YSTI
@@ -68,6 +74,8 @@ type Slots =
 type State a =
   { tree :: Tree a
   , window :: Maybe { width :: Number, height :: Number }
+  , mbFocus :: Maybe Tree.Path
+  , theme :: YST.Theme
   }
 
 
@@ -266,7 +274,7 @@ component startFromTree =
     }
   where
   initialState :: input -> State DemoItem
-  initialState _ = { tree : startFromTree, window : Nothing }
+  initialState _ = { tree : startFromTree, window : Nothing, mbFocus : Nothing, theme : YST.Light }
 
   defaultSize = { width : 1000.0, height : 1000.0 }
 
@@ -279,7 +287,10 @@ component startFromTree =
       { tree : state.tree
       , size : reduceSize $ fromMaybe defaultSize state.window
       , elements : YST.all
-      , theme : YST.Light
+      , theme : state.theme
+      , depthLimit : YST.Infinite
+      , childrenLimit : YST.Infinite
+      , focus : state.mbFocus
       }
 
   child :: YST.NodeComponent m DemoItem
@@ -318,18 +329,40 @@ component startFromTree =
     HandleHashChange -> do
       window <- H.liftEffect $ Web.window
       loc    <- H.liftEffect $ Window.location window
-      hash   <- H.liftEffect $ Location.hash loc
+      opts   <- H.liftEffect $ Location.hash loc
 
       let
+        optPair = case _ of
+          [] -> ("" /\ "")
+          [n] -> (n /\ "")
+          [n, v] -> (n /\ v)
+          [n, v, _] -> (n /\ v)
+          _ -> ("" /\ "")
+        optsMap = Map.fromFoldable $
+          if String.length opts > 0 then
+            optPair <$> String.split (Pattern "=") <$> (String.split (Pattern ",") $ String.drop 1 opts)
+          else
+            []
         example =
-            case hash of
-              "#simple" -> simpleTree
-              "#many" -> manyItems
-              "#my" -> myTree
-              "#init" -> myTree
-              "#letnum" -> lettersNumbers
-              _ -> lettersNumbers
+          case Map.lookup "ex" optsMap of
+            Just "simple" -> simpleTree
+            Just "many" -> manyItems
+            Just "my" -> myTree
+            Just "init" -> myTree
+            Just "letnum" -> lettersNumbers
+            _ -> lettersNumbers
+        mbTheme =
+          Map.lookup "theme" optsMap <#> case _ of
+            "dark" -> YST.Dark
+            "light" -> YST.Light
+            _ -> YST.Light
+        mbFocus =
+          Map.lookup "focus" optsMap <#> String.split (Pattern "-") <#> map Int.fromString <#> Array.catMaybes <#> Path.fromArray
 
-      H.liftEffect $ Console.log hash
+      H.liftEffect $ Console.log opts
 
-      H.modify_ $ _ { tree = example }
+      H.modify_ \s -> s
+        { tree = example
+        , theme = fromMaybe s.theme mbTheme
+        , mbFocus = mbFocus
+        }

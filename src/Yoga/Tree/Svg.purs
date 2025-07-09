@@ -112,6 +112,9 @@ type Input a =
     , size :: { width :: Number, height :: Number }
     , elements :: Set L.Element
     , theme :: Style.Theme
+    , depthLimit :: SvgTree.SoftLimit
+    , childrenLimit :: SvgTree.SoftLimit
+    , focus :: Maybe Path
     }
 
 
@@ -137,6 +140,8 @@ type State a =
     , theme :: Style.Theme
     , exportMode :: ExportMode
     , foldMode :: FoldMode
+    , depthLimit :: SvgTree.SoftLimit
+    , childrenLimit :: SvgTree.SoftLimit
     }
 
 
@@ -164,15 +169,17 @@ component' modes rconfig mbChildComp =
     }
   where
 
-  geometry :: SvgTree.Geometry
-  geometry =
-    { scaleFactor : 10.0
+  scaleLimit = { min : 0.2, max : 50.0 }
+
+  geometry :: State a -> SvgTree.Geometry
+  geometry state =
+    { scaleFactor : state.zoom * 5.0
     , baseDistance : 30.0
     , valueRadius : 5.0
-    , scaleLimit : { min : 0.2, max : 50.0 }
-    , depthLimit : SvgTree.Infinite
+    , scaleLimit
+    , depthLimit : state.depthLimit
     -- , depthLimit : SvgTree.Maximum 1
-    , childrenLimit : SvgTree.Infinite
+    , childrenLimit : state.childrenLimit
     -- , childrenLimit : SvgTree.Maximum 5
     }
 
@@ -193,11 +200,21 @@ component' modes rconfig mbChildComp =
     , theme
     , exportMode : Json
     , foldMode : OnlyFocus
+    , depthLimit : SvgTree.Infinite
+    , childrenLimit : SvgTree.Infinite
     }
 
   receive :: Input a -> State a -> State a
-  receive { tree, size } =
-    _ { size = size, tree = tree }
+  receive { tree, size, elements, depthLimit, childrenLimit, focus, theme } =
+    _
+      { size = size
+      , tree = tree
+      , elements = elements
+      , depthLimit = depthLimit
+      , childrenLimit = childrenLimit
+      , focus = fromMaybe Path.root focus
+      , theme = theme
+      }
 
   events :: SvgTree.Events (Action a) a
   events =
@@ -206,22 +223,23 @@ component' modes rconfig mbChildComp =
     , valueOut   : NodeOut
     }
 
-  graphConfig :: Style.Theme -> SvgTree.GraphConfig a _
-  graphConfig theme =
-    { geometry
+  graphConfig :: State a -> SvgTree.GraphConfig a (Action a)
+  graphConfig state =
+    { geometry : geometry state
     , events
     , modes
     , render : rconfig
-    , theme
+    , theme : state.theme
     }
 
-  valueConfig :: SvgTree.NodeMode -> Style.Theme -> SvgTree.ValueConfig a
-  valueConfig nodeMode = graphConfig >>> SvgTree.toValueConfig >>> _ { nodeMode = nodeMode }
+  valueConfig :: State a -> SvgTree.NodeMode -> SvgTree.ValueConfig a
+  valueConfig state nodeMode = graphConfig state # SvgTree.toValueConfig # _ { nodeMode = nodeMode }
 
-  previewAt theme nodeMode tree previewPath =
-    case Path.find previewPath tree of
+  previewAt :: State a -> SvgTree.NodeMode -> Path -> HH.HTML _ (Action a)
+  previewAt state nodeMode previewPath =
+    case Path.find previewPath state.tree of
       Just previewNode ->
-        SvgTree.renderPreview' (valueConfig nodeMode theme) mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
+        SvgTree.renderPreview' (valueConfig state nodeMode) mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
       Nothing ->
         HH.text "?"
 
@@ -258,7 +276,7 @@ component' modes rconfig mbChildComp =
       >>> mapWithIndex (\path (a /\ xs) -> (statusOf state path /\ a) /\ xs)
       >>> Graph.fromMap
 
-  render :: State a -> _
+  render :: State a -> HH.HTML _ (Action a)
   render state =
     HH.div
       [ HP.style $ Style.component state.theme state.size.width state.size.height ]
@@ -270,7 +288,7 @@ component' modes rconfig mbChildComp =
       )
 
     where
-      gconfig = graphConfig state.theme # \rec -> rec { geometry = rec.geometry { scaleFactor = state.zoom * 5.0 } }
+      gconfig = graphConfig state :: SvgTree.GraphConfig a (Action a)
 
       htmlMoveTo pos =
         HH.div
@@ -288,7 +306,7 @@ component' modes rconfig mbChildComp =
             [ HP.style Style.graph ]
             $ pure
             $ HS.svg
-              [ HSA.width lo.rect.size.width
+              [ HSA.width  lo.rect.size.width
               , HSA.height lo.rect.size.height
               , HE.onWheel \wevt -> WheelChange
                   { dx : WE.deltaX wevt
@@ -347,11 +365,11 @@ component' modes rconfig mbChildComp =
             $ case state.preview of
                 Focused previewPath ->
                   if not $ Set.member previewPath state.pinned then
-                    wrapPinUnpin modes.previewMode state.theme gconfig.render false state.pinned state.tree previewPath
+                    wrapPinUnpin state modes.previewMode gconfig.render false previewPath
                   else HH.text ""
                 LostFocus previewPath ->
                   if not $ Set.member previewPath state.pinned then
-                    wrapPinUnpin modes.previewMode state.theme gconfig.render false state.pinned state.tree previewPath
+                    wrapPinUnpin state modes.previewMode gconfig.render false previewPath
                   else HH.text ""
                 None ->
                   HH.text ""
@@ -389,7 +407,7 @@ component' modes rconfig mbChildComp =
 
              : if not state.pinnedTextMode then
                   pure $ HH.div_
-                    $ (wrapPinUnpin modes.pinMode state.theme gconfig.render true state.pinned state.tree
+                    $ (wrapPinUnpin state modes.pinMode gconfig.render true
                    <$> Array.fromFoldable state.pinned)
                else
                   pure $ HH.div
@@ -556,21 +574,22 @@ component' modes rconfig mbChildComp =
       >>> map NEA.toArray
       >>> map (map Tuple.snd)
 
-  wrapPinUnpin nodeMode theme config allowGo pinned tree nodePath =
+  wrapPinUnpin :: State a -> SvgTree.NodeMode -> SvgTree.RenderConfig a -> Boolean -> Path -> HH.HTML _ (Action a)
+  wrapPinUnpin state nodeMode config allowGo nodePath =
     HH.div
       [ HP.style Style.pinBox ]
       [ HH.div
         [ ]
-        [ if not $ Set.member nodePath pinned then
+        [ if not $ Set.member nodePath state.pinned then
             _qbutton "Pin" $ Pin nodePath
           else
             _qbutton "Unpin" $ UnPin nodePath
         , if allowGo then
-            renderPath SingleGo config tree nodePath
+            renderPath SingleGo config state.tree nodePath
           else
-            renderPath ReadOnly config tree nodePath
+            renderPath ReadOnly config state.tree nodePath
         ]
-      , previewAt theme nodeMode tree nodePath
+      , previewAt state nodeMode nodePath
       ]
 
   updateFocus newPath s =
@@ -596,8 +615,8 @@ component' modes rconfig mbChildComp =
       H.modify_ (\state ->
         state
           { zoom
-            = min geometry.scaleLimit.max
-            $ max geometry.scaleLimit.min
+            = min scaleLimit.max
+            $ max scaleLimit.min
             $ state.zoom + (dy * 0.1)
           }
       )
@@ -618,6 +637,9 @@ component' modes rconfig mbChildComp =
           , tree : TreeConv.fromString SvgI._import userInput <#> fromMaybe SvgI.default
           , elements : s.elements
           , theme : s.theme
+          , depthLimit : s.depthLimit
+          , childrenLimit : s.childrenLimit
+          , focus : Nothing
           }
     FocusOn path ->
       H.modify_ $ updateFocus path
