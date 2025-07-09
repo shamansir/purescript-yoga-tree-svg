@@ -611,6 +611,12 @@ component' modes rconfig mbChildComp =
             else s.history
       }
 
+  updateSelection :: Path -> State a -> State a
+  updateSelection newPath = _ { selection = Just newPath, numKeyBuffer = [] }
+
+  clearSelection :: State a -> State a
+  clearSelection = _ { selection = Nothing, numKeyBuffer = [] }
+
   handleAction = case _ of
     Initialize -> do
       document <- H.liftEffect $ document =<< window
@@ -726,12 +732,13 @@ component' modes rconfig mbChildComp =
             in s
               { history = nextHistory
               , focus = Array.last nextHistory # fromMaybe Path.root
+              , numKeyBuffer = []
               }
   handleKey key | String.toLower key == "enter" = do
       s <- H.get
       H.put $ case s.selection of
               Just path ->
-                updateFocus path $ s { selection = Nothing }
+                updateFocus path $ clearSelection s
               Nothing -> s
   -- TODO backspace : go to second last in the history
   -- TODO `up` in normal mode: move focus up
@@ -745,16 +752,16 @@ component' modes rconfig mbChildComp =
             childrenCount = Array.length $ Tree.children subTree
             completeNum   = if bufferedNums > 0 then computeNum s.numKeyBuffer num else num
           in if (childrenCount <= Int.pow 10 (bufferedNums + 1)) && (completeNum < childrenCount) then
-            H.put $ s { selection = Just $ Path.safeAdvance selPath completeNum s.tree, numKeyBuffer = [] }
+            H.put $ updateSelection (Path.safeAdvance selPath completeNum s.tree) $ s
           else
             H.put $ s { numKeyBuffer = if bufferedNums < 3 then num : s.numKeyBuffer else [] }
       _whenJust (_isArrowKey key) $ \dir ->
           let nextPath = Path.advanceDir selPath dir s.tree
           in
             if dir == Path.Up && selPath == s.focus then
-              H.put $ updateFocus nextPath $ s { selection = Just nextPath }
+              H.put $ updateFocus nextPath $ updateSelection nextPath $ s
             else
-              H.put $ s { selection = Just nextPath }
+              H.put $ updateSelection nextPath $ s
 
 
 _whenJust :: forall a m. Applicative m => Maybe a -> (a -> m Unit) -> m Unit

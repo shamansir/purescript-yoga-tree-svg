@@ -26,7 +26,7 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Graph (Graph, Edge)
 import Data.Graph (toMap, fromMap, lookup) as Graph
 import Data.Map (empty, lookup, insert, update, filterKeys, delete) as Map
-import Data.Array (fromFoldable, toUnfoldable) as Array
+import Data.Array (fromFoldable, toUnfoldable, length, reverse, filter, take, drop) as Array
 import Data.Tuple (fst, snd, uncurry) as Tuple
 import Data.List (List(..))
 import Data.List (length, reverse, filter, take, drop) as List
@@ -128,22 +128,25 @@ foldl' = flip <<< foldl
 
 
 type PositionedMap a = Map Path (Positioned a)
-type GraphMap a = Map Path (a /\ List Path)
+type GraphMap a = Map Path (a /\ Array Path)
 type PositionedGraphMap a = GraphMap (Positioned a)
-type PathDupGraphMap a = Map Path (Path /\ a /\ List Path)
-type PathDupMapItem a = (Path /\ a /\ List Path)
+type PathDupGraphMap a = Map Path (Path /\ a /\ Array Path)
+type PathDupMapItem a = (Path /\ a /\ Array Path)
 
 
-distributePositions :: forall a. From -> Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned (Visibility a))
+distributePositions :: forall a. From -> Geometry -> (Path -> a -> Size) -> Graph Path a -> PositionedGraphMap (Visibility a)
 distributePositions { root, current } geom getSize graph =
     filledGraphMap
         # foldl (flip distribute) Map.empty
         # fillBackChildren
-        # map (lmap $ scale $ min geom.scaleLimit.max $ max geom.scaleLimit.min geom.scaleFactor)
-        # Graph.fromMap
+        <#> (lmap
+                $ scale
+                $ min geom.scaleLimit.max
+                $ max geom.scaleLimit.min geom.scaleFactor
+            )
 
     where
-        graphMap = Graph.toMap graph :: GraphMap a -- FIXME: List operations are too slow, convert to Arrays and then back?
+        graphMap = Graph.toMap graph <#> map Array.fromFoldable :: GraphMap a
         filledGraphMap =
             graphMap
                 # addPathsToValues
@@ -162,7 +165,6 @@ distributePositions { root, current } geom getSize graph =
                 neighNum = Int.toNumber rotData.neighbours
                 posNum = Int.toNumber rotData.pos
             in -1.0 * (angleStart + (posNum / (neighNum - 1.0)) * total)
-        addRoot (Path other) = case root of Path rootP -> Path (rootP <> other)
 
         addPathsToValues :: GraphMap a -> PathDupGraphMap a
         addPathsToValues = mapWithIndex ((/\))
@@ -176,12 +178,12 @@ distributePositions { root, current } geom getSize graph =
 
         inParent :: Path -> { neighbours :: Int, pos :: Int }
         inParent path =
-            { neighbours : Map.lookup (Path.up path) graphMap <#> Tuple.snd <#> List.length # fromMaybe 0
+            { neighbours : Map.lookup (Path.up path) graphMap <#> Tuple.snd <#> Array.length # fromMaybe 0
             , pos : Path.lastPos path # fromMaybe (-1)
             }
 
         fillBackChildren :: PositionedMap (Visibility a) -> PositionedGraphMap (Visibility a)
-        fillBackChildren = mapWithIndex \path cell -> cell /\ (Map.lookup path graphMap <#> Tuple.snd # fromMaybe Nil)
+        fillBackChildren = mapWithIndex \path cell -> cell /\ (Map.lookup path graphMap <#> Tuple.snd # fromMaybe [])
 
         distribute :: PathDupMapItem (Visibility a) -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
         distribute (curPath /\ curValue /\ childPaths) prevPositions =
@@ -201,11 +203,11 @@ distributePositions { root, current } geom getSize graph =
         storeRect path value position size =
             Map.insert path $ injectRect value position size
 
-        positionChildrenFrom :: Position -> List Path -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
+        positionChildrenFrom :: Position -> Array Path -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
         positionChildrenFrom parentPos childPaths =
-            foldl' (flip $ insertChildPos parentPos $ List.length childPaths) $ mapWithIndex (/\) (List.reverse childPaths)
+            foldl' (flip $ insertChildPos parentPos $ Array.length childPaths) $ mapWithIndex (/\) (Array.reverse childPaths)
 
-        rotateAll :: Position -> Number -> List Path -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
+        rotateAll :: Position -> Number -> Array Path -> PositionedMap (Visibility a) -> PositionedMap (Visibility a)
         rotateAll parentPos theta childPaths =
             foldl'
                 (\positions chPath ->
@@ -237,34 +239,34 @@ distributePositions { root, current } geom getSize graph =
                 checkVDepth :: Int -> x -> Path -> Visibility x
                 checkVDepth chCount x path | chCount > 0 && (Path.depth path - Path.depth root) == dLimit = DepthLimitReached x
                 checkVDepth _       x _    | otherwise = AllVisible x
-                processVal :: PathDupMapItem x -> Path /\ y /\ List Path
-                processVal (path /\ x /\ xs) = path /\ (f $ checkVDepth (List.length xs) x path) /\ List.filter notTooDeep xs
+                processVal :: PathDupMapItem x -> Path /\ y /\ Array Path
+                processVal (path /\ x /\ xs) = path /\ (f $ checkVDepth (Array.length xs) x path) /\ Array.filter notTooDeep xs
 
         applyChidrenLimit :: forall x y. Int -> (Visibility x -> y) -> PathDupGraphMap x -> PathDupGraphMap y
-        applyChidrenLimit chLimit f = map checkChCount >>> foldl foldF (Nil /\ Map.empty) >>> Tuple.uncurry (flip removeAllDropped)
+        applyChidrenLimit chLimit f = map checkChCount >>> foldl foldF ([] /\ Map.empty) >>> Tuple.uncurry (flip removeAllDropped)
             where
                 -- FIXME: first, collect all paths for the chidren of ... of the "dropped" chidlren, then filter out path duplicates using a `Set`,
                 --        and only then remove all entries from the `Map`: it should be much faster than the current method
-                removeAllDropped :: PathDupGraphMap y -> List Path -> PathDupGraphMap y
+                removeAllDropped :: PathDupGraphMap y -> Array Path -> PathDupGraphMap y
                 removeAllDropped = foldr removeOneDropped
                 removeOneDropped :: Path -> PathDupGraphMap y -> PathDupGraphMap y
                 removeOneDropped path theMap =
                     case Map.lookup path theMap of
                         Just (_ /\ _ /\ xs) -> xs # foldr removeOneDropped theMap # Map.delete path
                         Nothing -> theMap # Map.delete path
-                foldF :: (List Path /\ PathDupGraphMap y) -> Path /\ y /\ { dropped :: List Path, left :: List Path } -> (List Path /\ PathDupGraphMap y)
+                foldF :: (Array Path /\ PathDupGraphMap y) -> Path /\ y /\ { dropped :: Array Path, left :: Array Path } -> (Array Path /\ PathDupGraphMap y)
                 foldF (prevDropped /\ collectMap) (p /\ y /\ { dropped, left }) = (prevDropped <> dropped) /\ (Map.insert p (p /\ y /\ left) collectMap)
-                checkChCount :: PathDupMapItem x -> Path /\ y /\ { dropped :: List Path, left :: List Path }
-                checkChCount (path /\ x /\ xs) | (List.length xs > chLimit) =
+                checkChCount :: PathDupMapItem x -> Path /\ y /\ { dropped :: Array Path, left :: Array Path }
+                checkChCount (path /\ x /\ xs) | (Array.length xs > chLimit) =
                     if (Path.startsWith current path) && (Path.depth current == (Path.depth path + 1)) then
                         let
-                            childrenCount = List.length xs
+                            childrenCount = Array.length xs
                             mbSelectionIdx = Path.lastPos current
                             firstSplit  = maybe 0 (\selIdx -> max 0             $ selIdx + 1 - chLimit) mbSelectionIdx
                             secondSplit = min childrenCount $ firstSplit + chLimit
-                            prefix = List.take firstSplit xs
-                            withSelection = List.take (secondSplit - firstSplit) $ List.drop firstSplit xs
-                            suffix = List.drop secondSplit xs
+                            prefix = Array.take firstSplit xs
+                            withSelection = Array.take (secondSplit - firstSplit) $ Array.drop firstSplit xs
+                            suffix = Array.drop secondSplit xs
                             limitValue = if firstSplit == 0
                                             then AtStart secondSplit
                                             else if secondSplit == childrenCount
@@ -273,9 +275,14 @@ distributePositions { root, current } geom getSize graph =
                         in
                         path /\ (f $ ChildrenLimitReached limitValue x) /\ { left : withSelection, dropped : prefix <> suffix }
                     else
-                        path /\ (f $ ChildrenLimitReached (AtStart chLimit) x) /\ { left : List.take chLimit xs, dropped : List.drop chLimit xs }
+                        path /\ (f $ ChildrenLimitReached (AtStart chLimit) x) /\ { left : Array.take chLimit xs, dropped : Array.drop chLimit xs }
                 checkChCount (path /\ x /\ xs) | otherwise
-                      = path /\ (f $ AllVisible x) /\ { dropped : Nil, left : xs }
+                      = path /\ (f $ AllVisible x) /\ { dropped : [], left : xs }
+
+
+distributePositions' :: forall a. From -> Geometry -> (Path -> a -> Size) -> Graph Path a -> Graph Path (Positioned (Visibility a))
+distributePositions' from geom getSize graph =
+    distributePositions from geom getSize graph <#> (map Array.toUnfoldable) # Graph.fromMap
 
 
 type RenderConfig a =
@@ -400,7 +407,7 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
         valuesGraph :: Graph Path a
         valuesGraph = graph <#> _valueOf
         positionsMap :: PositionedGraphMap (Visibility a)
-        positionsMap = Graph.toMap $ distributePositions from geom rconfig.componentSize valuesGraph
+        positionsMap = distributePositions from geom rconfig.componentSize valuesGraph
         keyLabelOffset = { x : -1.0 * (geom.valueRadius / 2.0), y : -7.0 }
         depthLimitOffset = { x : -1.0 * (geom.valueRadius / 2.0), y : 3.0 * geom.valueRadius }
         chOffsetY = 3.0 -- 0.0
@@ -455,7 +462,7 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
                             }
                 Nothing -> HS.g [] []
 
-        renderNode :: Path -> (Positioned (Visibility a) /\ List Path) -> _
+        renderNode :: Path -> (Positioned (Visibility a) /\ Array Path) -> _
         renderNode nodePath (va /\ paths) =
             (renderEdge nodePath va <$> Array.fromFoldable paths)
             <> [ renderValue nodePath va ]
