@@ -5,18 +5,44 @@
         "path": "./",
         "core": {
           "dependencies": [
-            "console",
-            "const",
-            "debug",
-            "effect",
-            "graphs",
-            "halogen",
-            "halogen-svg-elems",
-            "play",
-            "prelude",
-            "tailrec",
-            "yoga-tree",
-            "yoga-tree-utils"
+            "arrays",
+            "bifunctors",
+            {
+              "effect": ">=4.0.0 <5.0.0"
+            },
+            "foldable-traversable",
+            {
+              "graphs": ">=8.1.0 <9.0.0"
+            },
+            {
+              "halogen": ">=7.0.0 <8.0.0"
+            },
+            {
+              "halogen-svg-elems": ">=8.0.0 <9.0.0"
+            },
+            "integers",
+            "lists",
+            "maybe",
+            "numbers",
+            "ordered-collections",
+            {
+              "play": ">=0.1.0 <0.2.0"
+            },
+            {
+              "prelude": ">=6.0.2 <7.0.0"
+            },
+            "strings",
+            "tuples",
+            "web-events",
+            "web-html",
+            "web-uievents",
+            "yoga-json",
+            {
+              "yoga-tree": ">=1.0.0 <2.0.0"
+            },
+            {
+              "yoga-tree-utils": ">=0.1.0 <0.2.0"
+            }
           ],
           "build_plan": [
             "aff",
@@ -29,7 +55,6 @@
             "contravariant",
             "control",
             "datetime",
-            "debug",
             "distributive",
             "dom-indexed",
             "effect",
@@ -800,15 +825,6 @@
         "partial",
         "prelude",
         "tuples"
-      ]
-    },
-    "debug": {
-      "type": "registry",
-      "version": "6.0.2",
-      "integrity": "sha256-vmkYFuXYuELBzeauvgHG6E6Kf/Hp1dAnxwE9ByHfwSg=",
-      "dependencies": [
-        "functions",
-        "prelude"
       ]
     },
     "distributive": {
