@@ -110,7 +110,7 @@
     },
     "package_set": {
       "address": {
-        "registry": "65.0.0"
+        "registry": "65.1.0"
       },
       "compiler": ">=0.15.15 <0.16.0",
       "content": {
@@ -303,7 +303,7 @@
         "halogen-vdom-string-renderer": "0.5.0",
         "halogen-xterm": "2.0.0",
         "heckin": "2.0.1",
-        "heterogeneous": "0.6.0",
+        "heterogeneous": "0.7.0",
         "homogeneous": "0.4.0",
         "http-methods": "6.0.0",
         "httpurple": "4.0.0",
@@ -637,7 +637,7 @@
         "webextension-polyfill": "0.1.0",
         "webgpu": "0.0.1",
         "which": "2.0.0",
-        "whine-core": "0.0.30",
+        "whine-core": "0.0.32",
         "xterm": "1.0.0",
         "yoga-fetch": "1.0.1",
         "yoga-json": "5.1.0",
@@ -651,14 +651,8 @@
       }
     },
     "extra_packages": {
-      "play": {
-        "git": "https://github.com/shamansir/purescript-play.git",
-        "ref": "b2f51090c77812c3e5563b56a7c39bf607372001"
-      },
-      "yoga-tree-utils": {
-        "git": "https://github.com/shamansir/purescript-yoga-tree-utils.git",
-        "ref": "e4f72ec0ee62ae63912b346560047947a68f0053"
-      }
+      "play": "0.1.0",
+      "yoga-tree-utils": "0.1.0"
     }
   },
   "packages": {
@@ -1329,13 +1323,15 @@
       "dependencies": []
     },
     "play": {
-      "type": "git",
-      "url": "https://github.com/shamansir/purescript-play.git",
-      "rev": "b2f51090c77812c3e5563b56a7c39bf607372001",
+      "type": "registry",
+      "version": "0.1.0",
+      "integrity": "sha256-9mq1t75dEMdKoQQ4rnX36BqDphkJxM1n0Q0uOg0Nbg4=",
       "dependencies": [
-        "console",
-        "effect",
+        "arrays",
+        "foldable-traversable",
+        "integers",
         "prelude",
+        "tuples",
         "yoga-tree",
         "yoga-tree-utils"
       ]
@@ -1674,17 +1670,24 @@
       ]
     },
     "yoga-tree-utils": {
-      "type": "git",
-      "url": "https://github.com/shamansir/purescript-yoga-tree-utils.git",
-      "rev": "e4f72ec0ee62ae63912b346560047947a68f0053",
+      "type": "registry",
+      "version": "0.1.0",
+      "integrity": "sha256-kYBOd0IXEQxa+wlYRKb03tY5X1/VPo5tAWgaNVwmP9U=",
       "dependencies": [
         "arrays",
+        "bifunctors",
+        "either",
         "foldable-traversable",
+        "foreign",
         "free",
         "graphs",
+        "lists",
         "maybe",
+        "newtype",
+        "ordered-collections",
         "prelude",
         "strings",
+        "tailrec",
         "tuples",
         "unicode",
         "yoga-json",

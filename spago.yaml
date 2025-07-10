@@ -8,8 +8,8 @@ package:
     - graphs
     - halogen
     - halogen-svg-elems
-    - play: ">=0.1.0 <1.0.0"
     - prelude
+    - play
     - tailrec
     - yoga-tree
     - yoga-tree-utils
