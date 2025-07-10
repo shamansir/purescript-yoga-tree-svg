@@ -8,7 +8,7 @@ package:
     - graphs
     - halogen
     - halogen-svg-elems
-    - play
+    - play: ">=0.1.0 <1.0.0"
     - prelude
     - tailrec
     - yoga-tree
@@ -18,13 +18,17 @@ package:
   test:
     main: Test.Main
     dependencies: []
+  publish:
+    version: 0.1.0
+    license: BSD-3-Clause
+    exclude:
+      - "test/**/*"
+    location:
+      githubOwner: shamansir
+      githubRepo: purescript-yoga-tree-svg
 workspace:
   packageSet:
-    registry: 65.0.0
+    registry: 65.1.0
   extraPackages:
-    yoga-tree-utils:
-      git: https://github.com/shamansir/purescript-yoga-tree-utils.git
-      ref: e4f72ec0ee62ae63912b346560047947a68f0053
-    play:
-      git: https://github.com/shamansir/purescript-play.git
-      ref: b2f51090c77812c3e5563b56a7c39bf607372001
+    yoga-tree-utils: 0.1.0
+    play: 0.1.0
