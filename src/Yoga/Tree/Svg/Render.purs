@@ -164,7 +164,12 @@ distributePositions { root, current } geom getSize graph =
                 total = neighNum * (Number.pi / 10.0)
                 neighNum = Int.toNumber rotData.neighbours
                 posNum = Int.toNumber rotData.pos
-            in -1.0 * (angleStart + (posNum / (neighNum - 1.0)) * total)
+            in if rotData.neighbours > 1 then
+                -1.0 * (angleStart + (posNum / (neighNum - 1.0)) * total)
+            else if rotData.neighbours == 1 then
+                -1.0 * angleStart
+            else 0.0 -- -1.0 * Math.pi / 2.0
+
 
         addPathsToValues :: GraphMap a -> PathDupGraphMap a
         addPathsToValues = mapWithIndex ((/\))
@@ -262,7 +267,7 @@ distributePositions { root, current } geom getSize graph =
                         let
                             childrenCount = Array.length xs
                             mbSelectionIdx = Path.lastPos current
-                            firstSplit  = maybe 0 (\selIdx -> max 0             $ selIdx + 1 - chLimit) mbSelectionIdx
+                            firstSplit  = maybe 0 (\selIdx -> max 0 $ selIdx + 1 - chLimit) mbSelectionIdx
                             secondSplit = min childrenCount $ firstSplit + chLimit
                             prefix = Array.take firstSplit xs
                             withSelection = Array.take (secondSplit - firstSplit) $ Array.drop firstSplit xs
