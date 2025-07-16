@@ -243,6 +243,10 @@ instance ReadForeign DemoItem where
     <|> ((readImpl f :: F String) <#> StrItem)
 
 
+previewWidth = 200.0
+previewHeight = 25.0
+
+
 config :: forall a. IsSvgTreeItem a => YST.RenderConfig a
 config =
   { edgeColor : \theme _ _ _ _ -> YST.tx theme
@@ -251,7 +255,7 @@ config =
   , valueLabelColor : \theme _ _ -> YST.tx2 theme
   , valueLabelWidth : \path -> String.length <<< config.valueLabel path
   , valueColor : \theme _ _ -> YST.tx3 theme
-  , componentSize  : const $ const { width : 200.0, height : 25.0 }
+  , componentSize  : const $ const { width : previewWidth, height : previewHeight }
   }
 
 
@@ -305,7 +309,14 @@ component startFromTree =
   child :: YST.NodeComponent m DemoItem
   child = H.mkComponent
     { initialState : identity
-    , render : childString >>> HH.text >>> pure >>> HS.text [ HSA.fill $ HSA.RGB 0 0 0 ]
+    , render :
+        childString
+        >>> HH.text
+        >>> pure
+        >>> HS.text
+          [ HSA.transform [ HSA.Translate 0.0 (previewHeight / 2.0) ]
+          , HSA.fill $ HSA.RGB 0 0 0
+          ]
     , eval: H.mkEval $ H.defaultEval { handleAction = const $ pure unit }
     }
 

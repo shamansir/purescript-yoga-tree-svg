@@ -499,7 +499,7 @@ renderPreview' vconfig mbComponent nodeStatus nodePath value =
             case vconfig.nodeMode of
               Component ->
                 { x : 0.0
-                , y : componentSize.height / 2.0
+                , y : 0.0
                 }
               _ ->
                 { x : componentSize.width  / 2.0
