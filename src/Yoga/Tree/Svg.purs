@@ -9,7 +9,7 @@ import Prelude
 import Effect.Class (class MonadEffect)
 
 import Data.Array ((:))
-import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse, replicate, groupBy) as Array
+import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse, replicate, groupBy, range, drop) as Array
 import Data.Array.NonEmpty as NEA
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Foldable (foldl)
@@ -73,6 +73,7 @@ data Action a
     | ResetZoom
     | Pin Path
     | UnPin Path
+    | PinScroll Int
     | TryParse String
     | PauseListeningKeys
     | ResumeListeningKeys
@@ -143,6 +144,7 @@ type State a =
     , depthLimit :: SvgTree.SoftLimit
     , childrenLimit :: SvgTree.SoftLimit
     , numKeyBuffer :: Array Int
+    , pinnedScrollTo :: Maybe Int
     }
 
 
@@ -210,6 +212,7 @@ component' modes rconfig mbChildComp =
     , depthLimit : SvgTree.Infinite
     , childrenLimit : SvgTree.Infinite
     , numKeyBuffer : []
+    , pinnedScrollTo : Nothing
     }
 
 
@@ -420,6 +423,9 @@ component' modes rconfig mbChildComp =
           let
             pinnedCount = Set.size state.pinned
             pinnedLabel = if pinnedCount > 0 then show pinnedCount <> " pinned:" else ""
+            pinScrollButton n = _qbutton (show $ n + 1) $ PinScroll n
+            checkScroll Nothing pinnedArr = pinnedArr
+            checkScroll (Just n) pinnedArr = Array.drop n pinnedArr
             -- buttonAction =
           in HH.div
             [ HP.style $ Style.pinnedBox lo.rect.size.height
@@ -438,10 +444,16 @@ component' modes rconfig mbChildComp =
                   else HH.text ""
                 ]
 
+             : ( if pinnedCount > 0 then
+                  HH.div [ HP.style Style.pinnedScroll ]
+                  $ pinScrollButton <$> Array.range 0 (pinnedCount - 1)
+               else
+                  HH.text "" )
+
              : if not state.pinnedTextMode then
                   pure $ HH.div_
-                    $ (wrapPinUnpin state modes.pinMode gconfig.render Pinned
-                   <$> Array.fromFoldable state.pinned)
+                    $ wrapPinUnpin state modes.pinMode gconfig.render Pinned
+                   <$> (checkScroll state.pinnedScrollTo $ Array.fromFoldable state.pinned)
                else
                   pure $ HH.div
                     [ HP.style $ Style.textEditBox
@@ -450,7 +462,7 @@ component' modes rconfig mbChildComp =
                       [ HP.style $ Style.textarea state.theme
                       , HP.value $ String.joinWith "\n" $ pinnedTextLine <$> Array.fromFoldable state.pinned
                       , HP.rows 15
-                      , HP.cols 50
+                      , HP.cols 30
                       , HE.onFocusIn  $ const PauseListeningKeys
                       , HE.onFocusOut $ const ResumeListeningKeys
                       , HE.onBlur     $ const ResumeListeningKeys
@@ -699,9 +711,19 @@ component' modes rconfig mbChildComp =
     PreviewOver path ->
       H.modify_ _ { preview = Focused path }
     Pin path ->
-      H.modify_ \s -> s { pinned = s.pinned # Set.insert path }
+      H.modify_ \s ->
+        let nextPinned = s.pinned # Set.insert path
+        in s
+          { pinned = nextPinned
+          , pinnedScrollTo = ensureInRange nextPinned s.pinnedScrollTo
+          }
     UnPin path ->
-      H.modify_ \s -> s { pinned = s.pinned # Set.delete path }
+      H.modify_ \s ->
+        let nextPinned = s.pinned # Set.delete path
+        in s
+          { pinned = nextPinned
+          , pinnedScrollTo = ensureInRange nextPinned s.pinnedScrollTo
+          }
     PauseListeningKeys ->
       H.modify_ _ { editingSomeText = true }
     ResumeListeningKeys ->
@@ -719,6 +741,8 @@ component' modes rconfig mbChildComp =
     FoldSelect mevt path -> do
       H.liftEffect $ E.stopPropagation $ ME.toEvent mevt
       H.modify_ _ { selection = Just path }
+    PinScroll n ->
+      H.modify_ _ { pinnedScrollTo = Just n }
     ToggleFoldMode ->
       H.modify_ \s -> s { foldMode =
         case s.foldMode of
@@ -793,6 +817,10 @@ component' modes rconfig mbChildComp =
               H.put $ updateFocus nextPath $ updateSelection nextPath $ s
             else
               H.put $ updateSelection nextPath $ s
+
+  ensureInRange nextPinned curScrollTo =
+    curScrollTo >>= \n ->
+      if n >= 0 && n < Set.size nextPinned then Just n else Nothing
 
 
 _whenJust :: forall a m. Applicative m => Maybe a -> (a -> m Unit) -> m Unit

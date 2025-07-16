@@ -160,3 +160,4 @@ previewBox = "pointer-events: none; display: block;" :: String
 textarea :: Theme -> String
 textarea theme = "font-family: \"JetBrains Mono\", sans-serif; font-size: 10px; border-radius: 6px; padding: 5px; background-color: " <> pc (background2 theme) <> ";"
 pinBox = "" :: String
+pinnedScroll = "margin-bottom: 5px;" :: String
