@@ -206,6 +206,7 @@ component' modes rconfig mbChildComp =
     , numKeyBuffer : []
     }
 
+
   receive :: Input a -> State a -> State a
   receive { tree, size, elements, depthLimit, childrenLimit, mbFocus, theme } =
     _
@@ -367,17 +368,26 @@ component' modes rconfig mbChildComp =
                 _ -> DoNothing
             ]
             $ pure
-            $ case state.preview of
-                Focused previewPath ->
+            $ let
+                renderPreview previewPath =
                   if not $ Set.member previewPath state.pinned then
                     wrapPinUnpin state modes.previewMode gconfig.render false previewPath
                   else HH.text ""
-                LostFocus previewPath ->
-                  if not $ Set.member previewPath state.pinned then
-                    wrapPinUnpin state modes.previewMode gconfig.render false previewPath
-                  else HH.text ""
+            in case state.preview of
+                Focused focusPreviewPath ->
+                   renderPreview focusPreviewPath
+                LostFocus blurredPreviewPath ->
+                   case state.selection of
+                      Just selectionPath ->
+                          renderPreview selectionPath
+                      Nothing ->
+                          renderPreview blurredPreviewPath
                 None ->
-                  HH.text ""
+                  case state.selection of
+                      Just selectionPath ->
+                        renderPreview selectionPath
+                      Nothing ->
+                          HH.text ""
 
         {- History -}
         L.E L.History ->
