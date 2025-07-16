@@ -149,6 +149,12 @@ type State a =
 type NodeComponent m a = SvgTree.NodeComponent m a
 
 
+data PinUnpinMode_ -- FIXME: merge in an accurate way with `data Preview`, so keyboard selection never intersects with hover preview?
+  = Preview -- TODO: rename `Preview` to `HoverView` / `HoverGhost`?
+  | Selection
+  | Pinned
+
+
 component :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> H.Component query (Input a) output m
 component modes rconfig = component' modes rconfig Nothing
 
@@ -243,6 +249,14 @@ component' modes rconfig mbChildComp =
     case Path.find previewPath state.tree of
       Just previewNode ->
         SvgTree.renderPreview' (valueConfig state nodeMode) mbChildComp SvgTree.Normal previewPath $ Tree.value previewNode
+      Nothing ->
+        HH.text "?"
+
+  pinnedAt :: State a -> SvgTree.NodeMode -> Path -> HH.HTML _ (Action a)
+  pinnedAt state nodeMode pinnedPath =
+    case Path.find pinnedPath state.tree of
+      Just pinnedNode ->
+        SvgTree.renderPinned' (valueConfig state nodeMode) mbChildComp SvgTree.Normal pinnedPath $ Tree.value pinnedNode
       Nothing ->
         HH.text "?"
 
@@ -355,13 +369,19 @@ component' modes rconfig mbChildComp =
               else HH.text ""
             ]
 
-        {- Current Preview(s) or Selection -}
+        {- Current Preview or Selection -}
         L.E L.PreviewOrSelection ->
           HH.div
-            [ HP.style $ case state.preview of
-              Focused _   -> Style.previewFocused
-              LostFocus _ -> Style.previewBlurred
-              None -> Style.previewNone
+            [ HP.style $ case state.preview of -- FIXME: merge the similar logic: `Preview` and `Selection` in one `State` field (but remember that we also need the `Selection` path for keyboard purposes only)
+                Focused _   -> Style.previewFocused
+                LostFocus _ ->
+                  case state.selection of
+                    Just _  -> Style.previewFocused
+                    Nothing -> Style.previewBlurred
+                None ->
+                  case state.selection of
+                      Just _ -> Style.previewFocused
+                      Nothing -> Style.previewNone
             , HE.onMouseOver \_ -> case state.preview of
                 Focused path   -> PreviewOver path
                 LostFocus path -> PreviewOver path
@@ -369,23 +389,21 @@ component' modes rconfig mbChildComp =
             ]
             $ pure
             $ let
-                renderPreview previewPath =
-                  if not $ Set.member previewPath state.pinned then
-                    wrapPinUnpin state modes.previewMode gconfig.render false previewPath
-                  else HH.text ""
-            in case state.preview of
+                renderPreview pupMode previewPath = -- never `Pinned` here so the Halogen slot should not conflict with `Preview`/`Selection` anymore
+                    wrapPinUnpin state modes.previewMode gconfig.render pupMode previewPath
+            in case state.preview of -- FIXME: merge the similar logic: `Preview` and `Selection` in one `State` field (but remember that we also need the `Selection` path for keyboard purposes only)
                 Focused focusPreviewPath ->
-                   renderPreview focusPreviewPath
+                   renderPreview Preview focusPreviewPath
                 LostFocus blurredPreviewPath ->
                    case state.selection of
                       Just selectionPath ->
-                          renderPreview selectionPath
+                          renderPreview Selection selectionPath
                       Nothing ->
-                          renderPreview blurredPreviewPath
+                          renderPreview Preview blurredPreviewPath
                 None ->
                   case state.selection of
                       Just selectionPath ->
-                        renderPreview selectionPath
+                        renderPreview Selection selectionPath
                       Nothing ->
                           HH.text ""
 
@@ -422,7 +440,7 @@ component' modes rconfig mbChildComp =
 
              : if not state.pinnedTextMode then
                   pure $ HH.div_
-                    $ (wrapPinUnpin state modes.pinMode gconfig.render true
+                    $ (wrapPinUnpin state modes.pinMode gconfig.render Pinned
                    <$> Array.fromFoldable state.pinned)
                else
                   pure $ HH.div
@@ -589,8 +607,8 @@ component' modes rconfig mbChildComp =
       >>> map NEA.toArray
       >>> map (map Tuple.snd)
 
-  wrapPinUnpin :: State a -> SvgTree.NodeMode -> SvgTree.RenderConfig a -> Boolean -> Path -> HH.HTML _ (Action a)
-  wrapPinUnpin state nodeMode config allowGo nodePath =
+  wrapPinUnpin :: State a -> SvgTree.NodeMode -> SvgTree.RenderConfig a -> PinUnpinMode_ -> Path -> HH.HTML _ (Action a)
+  wrapPinUnpin state nodeMode config pupMode nodePath =
     HH.div
       [ HP.style Style.pinBox ]
       [ HH.div
@@ -599,12 +617,15 @@ component' modes rconfig mbChildComp =
             _qbutton "Pin" $ Pin nodePath
           else
             _qbutton "Unpin" $ UnPin nodePath
-        , if allowGo then
-            renderPath SingleGo config state.tree nodePath
-          else
-            renderPath ReadOnly config state.tree nodePath
+        , case pupMode of
+            Pinned    -> renderPath SingleGo config state.tree nodePath
+            Selection -> renderPath ReadOnly config state.tree nodePath
+            Preview   -> renderPath ReadOnly config state.tree nodePath
         ]
-      , previewAt state nodeMode nodePath
+      , case pupMode of
+        Pinned    -> pinnedAt  state nodeMode nodePath
+        Selection -> previewAt state nodeMode nodePath
+        Preview   -> previewAt state nodeMode nodePath
       ]
 
   computeNum :: Array Int -> Int -> Int

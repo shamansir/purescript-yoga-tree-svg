@@ -7,6 +7,7 @@ module Yoga.Tree.Svg.Render
     , renderGraph, renderGraph_, renderGraph'
     , renderGraphFrom, renderGraphFrom_, renderGraphFrom'
     , renderPreview, renderPreview_, renderPreview'
+    , renderPinned, renderPinned_, renderPinned'
     , WithStatus, statusColor
     , toValueConfig
     )
@@ -483,15 +484,41 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
 
 
 renderPreview :: forall a i m. ValueConfig a -> NodeStatus -> Path -> a -> GraphHtml m i
-renderPreview vconfig = renderPreview' vconfig Nothing
+renderPreview vconfig = _renderPreview _preview vconfig Nothing
 
 
 renderPreview_ :: forall a i m. ValueConfig a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
-renderPreview_ vconfig childComp = renderPreview' vconfig (Just childComp)
+renderPreview_ vconfig childComp = _renderPreview _preview vconfig (Just childComp)
 
 
 renderPreview' :: forall a i m. ValueConfig a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
-renderPreview' vconfig mbComponent nodeStatus nodePath value =
+renderPreview' = _renderPreview _preview
+
+
+renderPinned :: forall a i m. ValueConfig a -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPinned vconfig = _renderPreview _pinned vconfig Nothing
+
+
+renderPinned_ :: forall a i m. ValueConfig a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPinned_ vconfig childComp = _renderPreview _pinned vconfig (Just childComp)
+
+
+renderPinned' :: forall a i m. ValueConfig a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPinned' = _renderPreview _pinned
+
+
+_renderPreview
+    :: forall slot r' a i m
+     . IsSymbol slot
+    => Row.Cons slot NodeSlot r' Slots
+    => Proxy slot
+    -> ValueConfig a
+    -> Maybe (NodeComponent m a)
+    -> NodeStatus
+    -> Path
+    -> a
+    -> GraphHtml m i
+_renderPreview slot vconfig mbComponent nodeStatus nodePath value =
     let
         componentSize = vconfig.render.componentSize nodePath value
         padding = 5.0
@@ -522,7 +549,7 @@ renderPreview' vconfig mbComponent nodeStatus nodePath value =
                 , HSA.transform $ pure $ HSA.Translate padding padding
                 ]
                 $ pure
-                $ _renderValue GNormal vconfig _preview mbComponent nodeStatus position nodePath value
+                $ _renderValue GNormal vconfig slot mbComponent nodeStatus position nodePath value
             ]
 
 
