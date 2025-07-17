@@ -62,9 +62,9 @@ type Slots =
   )
 
 
-_item  = Proxy :: _ "item"
+_item     = Proxy :: _ "item"
 _preview  = Proxy :: _ "preview"
-_pinned  = Proxy :: _ "pinned"
+_pinned   = Proxy :: _ "pinned"
 
 
 data NodeQuery x = NodeQuery

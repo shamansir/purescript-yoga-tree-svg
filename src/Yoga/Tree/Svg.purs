@@ -2,27 +2,28 @@ module Yoga.Tree.Svg
   ( NodeComponent
   , component, component_
   , module LayoutEx
+  , Query(..), Output(..), Slot
   ) where
 
 import Prelude
 
-import Effect.Class (class MonadEffect)
-
 import Data.Array ((:))
 import Data.Array (take, fromFoldable, dropEnd, length, snoc, last, reverse, replicate, groupBy, range, drop) as Array
 import Data.Array.NonEmpty as NEA
-import Data.FunctorWithIndex (mapWithIndex)
-import Data.Foldable (foldl)
 import Data.Bifunctor (lmap)
+import Data.Foldable (foldl)
+import Data.FunctorWithIndex (mapWithIndex)
 import Data.Graph (Graph)
 import Data.Graph (fromMap, toMap) as Graph
+import Data.Int (floor, pow) as Int
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
 import Data.Set (empty, insert, delete, member, size) as Set
 import Data.String (take, toLower, joinWith) as String
 import Data.Tuple (fst, snd) as Tuple
 import Data.Tuple.Nested ((/\))
-import Data.Int (floor, pow) as Int
+
+import Effect.Class (class MonadEffect)
 
 import Halogen as H
 import Halogen.HTML as HH
@@ -32,6 +33,9 @@ import Halogen.Query.Event (eventListener)
 import Halogen.Svg.Attributes as HSA
 import Halogen.Svg.Elements as HS
 
+import Play as Play
+
+import Web.Event.Event as E
 import Web.HTML (window)
 import Web.HTML.HTMLDocument as HTMLDocument
 import Web.HTML.Window (document)
@@ -39,23 +43,20 @@ import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
 import Web.UIEvent.MouseEvent as ME
 import Web.UIEvent.WheelEvent as WE
-import Web.Event.Event as E
 
 import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value, children) as Tree
+import Yoga.Tree.Extended.Convert as TreeConv
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path (find, root, toArray, depth, safeAdvance, Dir(..), advanceDir, isNextFor) as Path
-import Yoga.Tree.Extended.Convert as TreeConv
-import Yoga.Tree.Svg.Render (WithStatus, statusColor)
-import Yoga.Tree.Svg.Render as SvgTree
-import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
-import Yoga.Tree.Svg.SvgItem (foldLabel, pinnedLine, _export, _import, default) as SvgI
-import Yoga.Tree.Svg.Style as Style
 import Yoga.Tree.Svg.Layout (Element(..), all) as LayoutEx
 import Yoga.Tree.Svg.Layout as L
-
-import Play as Play
+import Yoga.Tree.Svg.Render (WithStatus, statusColor)
+import Yoga.Tree.Svg.Render as SvgTree
+import Yoga.Tree.Svg.Style as Style
+import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
+import Yoga.Tree.Svg.SvgItem (foldLabel, pinnedLine, _export, _import, default) as SvgI
 
 -- import Yoga.Tree.Zipper (Path)
 
@@ -148,30 +149,48 @@ type State a =
     }
 
 
+data PinUnpinMode_ -- FIXME: merge in an accurate way with `data Preview`, so keyboard selection never intersects with hover preview?
+    = Preview -- TODO: rename `Preview` to `HoverView` / `HoverGhost`?
+    | Selection
+    | Pinned
+
+
+data Query q
+    = ChangeSelection Path q
+    | ClearSelection q
+    | RequestSelection (Maybe Path -> q)
+    | ChangeFocus Path q
+    | RequestFocus (Path -> q)
+
+
+data Output
+    = SelectionChanged Path
+    | SelectionCleared
+    | FocusChanged Path
+
+
+type SvgTree m a = H.Component Query (Input a) Output m
+type SvgTreeM m a x = H.HalogenM (State a) (Action a) SvgTree.Slots Output m x
+type Slot a = H.Slot Query Output a
 type NodeComponent m a = SvgTree.NodeComponent m a
 
 
-data PinUnpinMode_ -- FIXME: merge in an accurate way with `data Preview`, so keyboard selection never intersects with hover preview?
-  = Preview -- TODO: rename `Preview` to `HoverView` / `HoverGhost`?
-  | Selection
-  | Pinned
-
-
-component :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> H.Component query (Input a) output m
+component :: forall a m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> SvgTree m a
 component modes rconfig = component' modes rconfig Nothing
 
 
-component_ :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> NodeComponent m a -> H.Component query (Input a) output m
+component_ :: forall a m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> NodeComponent m a -> SvgTree m a
 component_ modes rconfig childComp = component' modes rconfig (Just childComp)
 
 
-component' :: forall a query output m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> Maybe (NodeComponent m a) -> H.Component query (Input a) output m
+component' :: forall a m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> Maybe (NodeComponent m a) -> SvgTree m a
 component' modes rconfig mbChildComp =
   H.mkComponent
     { initialState
     , render
     , eval: H.mkEval $ H.defaultEval
         { handleAction = handleAction
+        , handleQuery = handleQuery
         , receive = Just <<< Receive
         , initialize = Just Initialize
         }
@@ -660,6 +679,25 @@ component' modes rconfig mbChildComp =
   clearSelection :: State a -> State a
   clearSelection = _ { selection = Nothing, numKeyBuffer = [] }
 
+  handleQuery :: forall q. Query q -> SvgTreeM m a (Maybe q)
+  handleQuery = case _ of
+    RequestFocus reply -> do
+      s <- H.get
+      pure $ Just $ reply s.focus
+    RequestSelection reply -> do
+      s <- H.get
+      pure $ Just $ reply s.selection
+    ChangeSelection path q -> do
+      H.modify_ $ updateSelection path
+      pure $ Just q
+    ClearSelection q -> do
+      H.modify_ $ clearSelection
+      pure $ Just q
+    ChangeFocus path q -> do
+      H.modify_ $ updateFocus path
+      pure $ Just q
+
+  handleAction :: Action a -> SvgTreeM m a Unit
   handleAction = case _ of
     Initialize -> do
       document <- H.liftEffect $ document =<< window
@@ -668,6 +706,8 @@ component' modes rconfig mbChildComp =
             KET.keyup
             (HTMLDocument.toEventTarget document)
             (map (HandleKey sid) <<< KE.fromEvent)
+      H.raise $ SelectionCleared
+      H.raise $ FocusChanged Path.root
     Receive input ->
       H.modify_ $ receive input
     WheelChange { dy } ->
@@ -700,10 +740,12 @@ component' modes rconfig mbChildComp =
           , childrenLimit : s.childrenLimit
           , mbFocus : Nothing
           }
-    FocusOn path ->
+    FocusOn path -> do
       H.modify_ $ updateFocus path
-    NodeClick path _ ->
+      H.raise $ FocusChanged path
+    NodeClick path _ -> do
       H.modify_ $ updateFocus path
+      H.raise $ FocusChanged path
     NodeOver path _ ->
       H.modify_ _ { preview = Focused path }
     NodeOut path _ ->
@@ -741,6 +783,7 @@ component' modes rconfig mbChildComp =
     FoldSelect mevt path -> do
       H.liftEffect $ E.stopPropagation $ ME.toEvent mevt
       H.modify_ _ { selection = Just path }
+      H.raise $ SelectionChanged path
     PinScroll n ->
       H.modify_ _ { pinnedScrollTo = Just n }
     ToggleFoldMode ->
@@ -763,12 +806,16 @@ component' modes rconfig mbChildComp =
                 Nothing -> s.focus
             )
         }
-  handleKey key | key == " " =
-      H.modify_ \s ->
-        s { selection = Just s.focus }
-  handleKey key | key == "*" = H.modify_ $ updateFocus Path.root
-  handleKey key | String.toLower key == "tab" = H.modify_ $ updateFocus Path.root
-  handleKey key | String.toLower key == "escape" =
+  handleKey key | key == " " = do
+      s <- H.modify \s -> s { selection = Just s.focus }
+      H.raise $ SelectionChanged s.focus
+  handleKey key | key == "*" = do
+      H.modify_ $ updateFocus Path.root
+      H.raise $ FocusChanged Path.root
+  handleKey key | String.toLower key == "tab" = do
+      H.modify_ $ updateFocus Path.root
+      H.raise $ FocusChanged Path.root
+  handleKey key | String.toLower key == "escape" = do
       H.modify_ \s -> s
         { selection = Nothing
         , preview = None
@@ -776,8 +823,9 @@ component' modes rconfig mbChildComp =
         , editingSomeText = false
         , numKeyBuffer = []
         }
-  handleKey key | String.toLower key == "backspace" =
-      H.modify_ \s ->
+      H.raise SelectionCleared
+  handleKey key | String.toLower key == "backspace" = do
+      s <- H.modify \s ->
         case s.history of
           [] -> s
           [ _ ] -> s
@@ -789,12 +837,14 @@ component' modes rconfig mbChildComp =
               , focus = Array.last nextHistory # fromMaybe Path.root
               , numKeyBuffer = []
               }
+      H.raise $ FocusChanged s.focus
   handleKey key | String.toLower key == "enter" = do
-      s <- H.get
-      H.put $ case s.selection of
+      s <- H.modify $ \s -> case s.selection of
               Just path ->
                 updateFocus path $ clearSelection s
               Nothing -> s
+      H.raise $ SelectionCleared
+      H.raise $ FocusChanged s.focus
   -- TODO backspace : go to second last in the history
   -- TODO `up` in normal mode: move focus up
   handleKey key = do
@@ -807,16 +857,21 @@ component' modes rconfig mbChildComp =
             childrenCount = Array.length $ Tree.children subTree
             completeNum   = if bufferedNums > 0 then computeNum s.numKeyBuffer num else num
           in if (childrenCount <= Int.pow 10 (bufferedNums + 1)) && (completeNum < childrenCount) then
-            H.put $ updateSelection (Path.safeAdvance selPath completeNum s.tree) $ s
+            let nextPath = Path.safeAdvance selPath completeNum s.tree
+            in do
+              H.put $ updateSelection nextPath $ s
+              H.raise $ SelectionChanged nextPath
           else
             H.put $ s { numKeyBuffer = if bufferedNums < 3 then num : s.numKeyBuffer else [] }
       _whenJust (_isArrowKey key) $ \dir ->
           let nextPath = Path.advanceDir selPath dir s.tree
-          in
-            if dir == Path.Up && selPath == s.focus then
+          in do
+            if dir == Path.Up && selPath == s.focus then do
               H.put $ updateFocus nextPath $ updateSelection nextPath $ s
+              H.raise $ FocusChanged nextPath
             else
               H.put $ updateSelection nextPath $ s
+            H.raise $ SelectionChanged nextPath
 
   ensureInRange nextPinned curScrollTo =
     curScrollTo >>= \n ->

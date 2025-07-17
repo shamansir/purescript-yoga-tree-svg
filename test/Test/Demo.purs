@@ -40,7 +40,7 @@ import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended (leaf) as Tree
 import Yoga.Tree.Extended.Path (Path) as Tree
 import Yoga.Tree.Extended.Path (fromArray) as Path
-import Yoga.Tree.Svg (NodeComponent, component_, all) as YST
+import Yoga.Tree.Svg (NodeComponent, component_, all, Slot) as YST
 import Yoga.Tree.Svg.Render (Modes, RenderConfig, NodeMode(..), EdgeMode(..), SoftLimit(..)) as YST
 import Yoga.Tree.Svg.Style (Theme(..), tx, tx2, tx3) as YST
 import Yoga.Tree.Svg.SvgItem (class IsTreeItem, class IsSvgTreeItem)
@@ -67,7 +67,7 @@ main = HA.runHalogenAff do
 
 
 type Slots =
-  ( tree :: forall q o. H.Slot q o Unit
+  ( tree :: YST.Slot Unit
   )
 
 
