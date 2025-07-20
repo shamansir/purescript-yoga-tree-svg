@@ -241,7 +241,7 @@ component' modes rconfig mbChildComp =
 
 
   receive :: Input a -> State a -> State a
-  receive { tree, size, elements, depthLimit, childrenLimit, mbFocus, theme } =
+  receive { tree, size, elements, depthLimit, childrenLimit, mbFocus, theme, breadcrumbsAction } =
     _
       { size = size
       , tree = tree
@@ -250,6 +250,7 @@ component' modes rconfig mbChildComp =
       , childrenLimit = childrenLimit
       , focus = fromMaybe Path.root mbFocus
       , theme = theme
+      , breadcrumbsAction = breadcrumbsAction
       }
 
   events :: SvgTree.Events (Action a) a
@@ -328,10 +329,23 @@ component' modes rconfig mbChildComp =
       <$>
       (Play.flattenLayout
         $ Play.layout
-        $ L.layout state.size
+        $ L.layout
+            { screen : state.size
+            , select : selectSize
+            }
       )
 
     where
+      defaultSelectSize = { width : 200.0, height : 60.0 }
+
+      -- TODO: rename `Preview` to `Selection` may be, yes, `Hovered` is not a selection, but still it would have more sense,
+      -- especially if we support multiple selection at some point (aren't `pinned` a multiple selection?)
+
+      sizeOf path =
+        case state.tree # Path.find path of
+          Just subTree -> rconfig.componentSize path $ Tree.value subTree
+          Nothing -> defaultSelectSize
+
       gconfig = graphConfig state :: SvgTree.GraphConfig a (Action a)
 
       htmlMoveTo pos =
@@ -401,7 +415,7 @@ component' modes rconfig mbChildComp =
         {- Current Preview or Selection -}
         L.E L.PreviewOrSelection ->
           HH.div
-            [ HP.style $ case state.preview of -- FIXME: merge the similar logic: `Preview` and `Selection` in one `State` field (but remember that we also need the `Selection` path for keyboard purposes only)
+            [ HP.style $ case state.preview of -- FIXME: xxx: merge the similar logic: `Preview` and `Selection` in one `State` field (but remember that we also need the `Selection` path for keyboard purposes only)
                 Focused _   -> Style.previewFocused
                 LostFocus _ ->
                   case state.selection of
@@ -420,7 +434,7 @@ component' modes rconfig mbChildComp =
             $ let
                 renderPreview pupMode previewPath = -- never `Pinned` here so the Halogen slot should not conflict with `Preview`/`Selection` anymore
                     wrapPinUnpin state modes.previewMode gconfig.render pupMode previewPath
-            in case state.preview of -- FIXME: merge the similar logic: `Preview` and `Selection` in one `State` field (but remember that we also need the `Selection` path for keyboard purposes only)
+            in case state.preview of -- FIXME: xxx: merge the similar logic: `Preview` and `Selection` in one `State` field (but remember that we also need the `Selection` path for keyboard purposes only)
                 Focused focusPreviewPath ->
                    renderPreview Preview focusPreviewPath
                 LostFocus blurredPreviewPath ->
@@ -597,6 +611,21 @@ component' modes rconfig mbChildComp =
       --     comp
       --   else
       --     HH.div [] []
+
+      selectSize =
+        case modes.previewMode of
+          SvgTree.Component ->
+            case state.preview of -- FIXME: xxx: merge the similar logic: `Preview` and `Selection` in one `State` field (but remember that we also need the `Selection` path for keyboard purposes only)
+              Focused path -> sizeOf path
+              LostFocus path ->
+                case state.selection of
+                  Just selPath -> sizeOf selPath
+                  Nothing      -> sizeOf path
+              None ->
+                case state.selection of
+                    Just selPath -> sizeOf selPath
+                    Nothing      -> defaultSelectSize
+          _ -> defaultSelectSize
 
       pinnedTextLine path =
         case Tree.value <$> Path.find path state.tree of
