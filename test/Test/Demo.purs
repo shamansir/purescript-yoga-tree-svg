@@ -304,6 +304,7 @@ component startFromTree =
       , depthLimit : maybe YST.Infinite YST.Maximum state.mbDepthLimit
       , childrenLimit : maybe YST.Infinite YST.Maximum state.mbChildrenLimit
       , mbFocus : state.mbFocus
+      , breadcrumbsAction : false
       }
 
   child :: YST.NodeComponent m DemoItem

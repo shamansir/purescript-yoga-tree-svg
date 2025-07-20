@@ -85,11 +85,12 @@ data Action a
     | SwitchExport ExportMode
     | FoldSelect ME.MouseEvent Path
     | ToggleFoldMode
+    | BreadcrumbsAction Path
     | DoNothing
 
 
 data PathMode
-    = Breadcrumbs
+    = Breadcrumbs { withAction :: Boolean }
     | ReadOnly
     | SingleGo
 
@@ -117,6 +118,7 @@ type Input a =
     , depthLimit :: SvgTree.SoftLimit
     , childrenLimit :: SvgTree.SoftLimit
     , mbFocus :: Maybe Path
+    , breadcrumbsAction :: Boolean
     }
 
 
@@ -146,6 +148,7 @@ type State a =
     , childrenLimit :: SvgTree.SoftLimit
     , numKeyBuffer :: Array Int
     , pinnedScrollTo :: Maybe Int
+    , breadcrumbsAction :: Boolean
     }
 
 
@@ -167,6 +170,7 @@ data Output
     = SelectionChanged Path
     | SelectionCleared
     | FocusChanged Path
+    | BreadcrumbsActionTriggered Path
 
 
 type SvgTree m a = H.Component Query (Input a) Output m
@@ -232,6 +236,7 @@ component' modes rconfig mbChildComp =
     , childrenLimit : SvgTree.Infinite
     , numKeyBuffer : []
     , pinnedScrollTo : Nothing
+    , breadcrumbsAction : false
     }
 
 
@@ -337,6 +342,8 @@ component' modes rconfig mbChildComp =
         HS.g
             [ HSA.transform [ HSA.Translate pos.x pos.y ] ]
 
+      bo = { withAction : state.breadcrumbsAction }
+
       renderElement lo = htmlMoveTo lo.rect.pos $ pure $ case lo.v of
 
         {- Graph component -}
@@ -376,13 +383,13 @@ component' modes rconfig mbChildComp =
               Nothing -> Style.breadcrumbs
             ]
             [ HH.text "Location: "
-            , renderPath Breadcrumbs gconfig.render state.tree state.focus
+            , renderPath (Breadcrumbs bo) gconfig.render state.tree state.focus
             , case state.selection of
                 Just selPath ->
                   HH.div
                     []
                     [ HH.text "Selection:"
-                    , renderPath Breadcrumbs gconfig.render state.tree selPath
+                    , renderPath (Breadcrumbs bo) gconfig.render state.tree selPath
                     ]
                 Nothing ->
                   HH.text ""
@@ -739,6 +746,7 @@ component' modes rconfig mbChildComp =
           , depthLimit : s.depthLimit
           , childrenLimit : s.childrenLimit
           , mbFocus : Nothing
+          , breadcrumbsAction : s.breadcrumbsAction
           }
     FocusOn path -> do
       H.modify_ $ updateFocus path
@@ -792,6 +800,8 @@ component' modes rconfig mbChildComp =
           OnlyFocus -> All
           All -> OnlyFocus
       }
+    BreadcrumbsAction path ->
+      H.raise $ BreadcrumbsActionTriggered path
     DoNothing -> pure unit
 
   handleKey key | key == "+" = H.modify_ \s -> s { zoom = s.zoom + 0.1 }
@@ -964,7 +974,7 @@ _pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
 
 
 renderPath :: forall p a. PathMode -> SvgTree.RenderConfig a -> Tree a -> Path -> HH.HTML p (Action a)
-renderPath Breadcrumbs config tree path =
+renderPath (Breadcrumbs { withAction }) config tree path =
   case Path.toArray path of
     [] ->
       HH.div [ HP.style Style.pathBox ] [ _pathReadOnlyRoot config.valueLabel tree ]
@@ -973,6 +983,7 @@ renderPath Breadcrumbs config tree path =
         [ HP.style Style.pathBox ]
         $ _pathRootButton false config.valueLabel tree
         : mapWithIndex (_pathStepButton false config.valueLabel tree path) pathArr
+       <> (if withAction then [ _qbutton "^" $ BreadcrumbsAction path ] else [ ])
 renderPath ReadOnly config tree path =
   HH.div
     [ HP.style Style.pathBox ]
