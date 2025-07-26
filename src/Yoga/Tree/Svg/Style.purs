@@ -1,6 +1,7 @@
 module Yoga.Tree.Svg.Style where
 
 import Prelude
+import Data.Int (toNumber) as Int
 
 import Halogen.Svg.Attributes (Color(..), printColor) as HSA
 
@@ -140,8 +141,8 @@ foldRepBox :: { width :: Number, height :: Number } -> String
 foldRepBox size = "position: relative; user-select: none; overflow: scroll; width: " <> show size.width <> "px; max-width: " <> show size.width <> "px; height: " <> show (size.height - 10.0) <> "px;" :: String
 foldRepLine :: HSA.Color -> String
 foldRepLine c = "display: block; background-color: " <> pc c <> ";"
-foldRepColumn :: Int -> String
-foldRepColumn n = "min-width: 60px; position: absolute; top: 0; left: " <> show (n * 100) <> "px;"
+foldRepColumn :: Number -> Int -> String
+foldRepColumn mult n = "min-width: 60px; position: absolute; top: 0; left: " <> show (Int.toNumber n * mult) <> "px;"
 foldRepIndent = "display: inline-block; width: 10px; min-width: 10px; opacity: 0.3; color: lightgray;" :: String
 jsonRepBox = "user-select: none;" :: String
 txLabel :: Theme -> String

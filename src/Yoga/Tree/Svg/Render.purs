@@ -349,6 +349,7 @@ type Geometry =
     , depthLimit :: SoftLimit
     , childrenLimit :: SoftLimit
     , showChildrenCount :: Boolean -- TODO: move to `NodeMode / NodeDecoration`
+    , foldColumnWidth :: Number
     }
 
 

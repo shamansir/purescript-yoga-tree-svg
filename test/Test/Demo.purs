@@ -306,6 +306,7 @@ component startFromTree =
       , mbFocus : state.mbFocus
       , breadcrumbsAction : true
       , showChildrenCount : true
+      , foldColumnWidth : Nothing
       }
 
   child :: YST.NodeComponent m DemoItem

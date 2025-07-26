@@ -1,6 +1,6 @@
 module Yoga.Tree.Svg
   ( NodeComponent
-  , component, component_
+  , component, component_, init
   , module LayoutEx
   , Query(..), Output(..), Slot
   ) where
@@ -120,6 +120,7 @@ type Input a =
     , mbFocus :: Maybe Path
     , breadcrumbsAction :: Boolean
     , showChildrenCount :: Boolean
+    , foldColumnWidth :: Maybe Number
     }
 
 
@@ -151,6 +152,7 @@ type State a =
     , pinnedScrollTo :: Maybe Int
     , breadcrumbsAction :: Boolean
     , showChildrenCount :: Boolean
+    , foldColumnWidth :: Maybe Number
     }
 
 
@@ -181,6 +183,21 @@ type Slot a = H.Slot Query Output a
 type NodeComponent m a = SvgTree.NodeComponent m a
 
 
+init :: forall a. { width :: Number, height :: Number } -> Tree a -> Input a
+init size tree =
+  { size
+  , tree
+  , elements : L.all
+  , childrenLimit : SvgTree.Infinite
+  , depthLimit : SvgTree.Infinite
+  , mbFocus : Nothing
+  , theme : Style.Light
+  , breadcrumbsAction : false
+  , showChildrenCount : false
+  , foldColumnWidth : Nothing
+  }
+
+
 component :: forall a m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> SvgTree m a
 component modes rconfig = component' modes rconfig Nothing
 
@@ -204,6 +221,7 @@ component' modes rconfig mbChildComp =
   where
 
   scaleLimit = { min : 0.2, max : 50.0 }
+  defaultFoldColumnWidth = 100.0
 
   geometry :: State a -> SvgTree.Geometry
   geometry state =
@@ -216,6 +234,7 @@ component' modes rconfig mbChildComp =
     , childrenLimit : state.childrenLimit
     -- , childrenLimit : SvgTree.Maximum 5
     , showChildrenCount : state.showChildrenCount
+    , foldColumnWidth : fromMaybe defaultFoldColumnWidth state.foldColumnWidth
     }
 
   initialState :: Input a -> State a
@@ -241,21 +260,23 @@ component' modes rconfig mbChildComp =
     , pinnedScrollTo : Nothing
     , breadcrumbsAction : false
     , showChildrenCount : false
+    , foldColumnWidth : Nothing
     }
 
 
   receive :: Input a -> State a -> State a
-  receive { tree, size, elements, depthLimit, childrenLimit, mbFocus, theme, breadcrumbsAction, showChildrenCount } =
+  receive input =
     _
-      { size = size
-      , tree = tree
-      , elements = elements
-      , depthLimit = depthLimit
-      , childrenLimit = childrenLimit
-      , focus = fromMaybe Path.root mbFocus
-      , theme = theme
-      , breadcrumbsAction = breadcrumbsAction
-      , showChildrenCount = showChildrenCount
+      { size = input.size
+      , tree = input.tree
+      , elements = input.elements
+      , depthLimit = input.depthLimit
+      , childrenLimit = input.childrenLimit
+      , focus = fromMaybe Path.root input.mbFocus
+      , theme = input.theme
+      , breadcrumbsAction = input.breadcrumbsAction
+      , showChildrenCount = input.showChildrenCount
+      , foldColumnWidth = input.foldColumnWidth
       }
 
   events :: SvgTree.Events (Action a) a
@@ -640,7 +661,7 @@ component' modes rconfig mbChildComp =
           Nothing -> "?"
 
       foldRepColumn colN =
-        HH.div [ HP.style $ Style.foldRepColumn colN ]
+        HH.div [ HP.style $ Style.foldRepColumn gconfig.geometry.foldColumnWidth colN ]
 
       fixFoldFocusPath (Path path) =
         case state.foldMode of
@@ -784,6 +805,7 @@ component' modes rconfig mbChildComp =
           , mbFocus : Nothing
           , breadcrumbsAction : s.breadcrumbsAction
           , showChildrenCount : s.showChildrenCount
+          , foldColumnWidth : s.foldColumnWidth
           }
     FocusOn path -> do
       H.modify_ $ updateFocus path
