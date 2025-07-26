@@ -40,7 +40,7 @@ import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended (leaf) as Tree
 import Yoga.Tree.Extended.Path (Path) as Tree
 import Yoga.Tree.Extended.Path (fromArray) as Path
-import Yoga.Tree.Svg (NodeComponent, component_, all, Slot) as YST
+import Yoga.Tree.Svg (NodeComponent, component_, all, Slot, allExports) as YST
 import Yoga.Tree.Svg.Render (Modes, RenderConfig, NodeMode(..), EdgeMode(..), SoftLimit(..)) as YST
 import Yoga.Tree.Svg.Style (Theme(..), tx, tx2, tx3) as YST
 import Yoga.Tree.Svg.SvgItem (class IsTreeItem, class IsSvgTreeItem)
@@ -300,6 +300,7 @@ component startFromTree =
       { tree : state.tree
       , size : reduceSize $ fromMaybe defaultSize state.window
       , elements : YST.all
+      , exports : YST.allExports
       , theme : state.theme
       , depthLimit : maybe YST.Infinite YST.Maximum state.mbDepthLimit
       , childrenLimit : maybe YST.Infinite YST.Maximum state.mbChildrenLimit

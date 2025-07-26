@@ -3,6 +3,8 @@ module Yoga.Tree.Svg
   , component, component_, init
   , module LayoutEx
   , Query(..), Output(..), Slot
+  , ExportMode(..)
+  , allExports
   ) where
 
 import Prelude
@@ -18,7 +20,7 @@ import Data.Graph (fromMap, toMap) as Graph
 import Data.Int (floor, pow) as Int
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
-import Data.Set (empty, insert, delete, member, size) as Set
+import Data.Set (empty, insert, delete, member, size, fromFoldable, toUnfoldable) as Set
 import Data.String (take, toLower, joinWith) as String
 import Data.Tuple (fst, snd) as Tuple
 import Data.Tuple.Nested ((/\))
@@ -47,6 +49,7 @@ import Web.UIEvent.WheelEvent as WE
 import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value, children) as Tree
 import Yoga.Tree.Extended.Convert as TreeConv
+import Yoga.Tree.Extended.Convert.Dot as TreeConv
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path (find, root, toArray, depth, safeAdvance, Dir(..), advanceDir, isNextFor) as Path
@@ -108,12 +111,14 @@ data FoldMode
 data ExportMode
     = Json
     | Text TreeConv.Mode
+    | Dot
 
 
 type Input a =
     { tree :: Tree a
     , size :: { width :: Number, height :: Number }
     , elements :: Set L.Element
+    , exports :: Set ExportMode
     , theme :: Style.Theme
     , depthLimit :: SvgTree.SoftLimit
     , childrenLimit :: SvgTree.SoftLimit
@@ -143,6 +148,7 @@ type State a =
     , pinnedTextMode :: Boolean
     , editingSomeText :: Boolean
     , elements :: Set L.Element
+    , exports :: Set ExportMode
     , theme :: Style.Theme
     , exportMode :: ExportMode
     , foldMode :: FoldMode
@@ -183,19 +189,25 @@ type Slot a = H.Slot Query Output a
 type NodeComponent m a = SvgTree.NodeComponent m a
 
 
+allExports :: Set ExportMode
+allExports = Set.fromFoldable
+    [ Json, Dot, Text TreeConv.Lines, Text TreeConv.Indent, Text TreeConv.Paths, Text TreeConv.Corners, Text TreeConv.Triangles, Text TreeConv.Dashes ]
+
+
 init :: forall a. { width :: Number, height :: Number } -> Tree a -> Input a
 init size tree =
-  { size
-  , tree
-  , elements : L.all
-  , childrenLimit : SvgTree.Infinite
-  , depthLimit : SvgTree.Infinite
-  , mbFocus : Nothing
-  , theme : Style.Light
-  , breadcrumbsAction : false
-  , showChildrenCount : false
-  , foldColumnWidth : Nothing
-  }
+    { size
+    , tree
+    , elements : L.all
+    , exports : allExports
+    , childrenLimit : SvgTree.Infinite
+    , depthLimit : SvgTree.Infinite
+    , mbFocus : Nothing
+    , theme : Style.Light
+    , breadcrumbsAction : false
+    , showChildrenCount : false
+    , foldColumnWidth : Nothing
+    }
 
 
 component :: forall a m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> SvgTree m a
@@ -238,29 +250,30 @@ component' modes rconfig mbChildComp =
     }
 
   initialState :: Input a -> State a
-  initialState { tree, size, elements, theme } =
-    { tree
-    , focus : Path.root
-    , history : [ Path.root ]
+  initialState input =
+    { tree : input.tree
+    , focus : fromMaybe Path.root input.mbFocus
+    , history : [ fromMaybe Path.root input.mbFocus ]
     , zoom : 1.0
-    , size
+    , size : input.size
     , preview : None
     , pinned : Set.empty
     , selection : Nothing
     , treeTextMode : false -- is tree text mode enabled
     , pinnedTextMode : false
     , editingSomeText : false -- are we currently editing any text (to block UI controls)
-    , elements
-    , theme
+    , elements : input.elements
+    , exports : input.exports
+    , theme : input.theme
     , exportMode : Json
     , foldMode : OnlyFocus
-    , depthLimit : SvgTree.Infinite
-    , childrenLimit : SvgTree.Infinite
+    , depthLimit : input.depthLimit
+    , childrenLimit : input.childrenLimit
     , numKeyBuffer : []
     , pinnedScrollTo : Nothing
-    , breadcrumbsAction : false
-    , showChildrenCount : false
-    , foldColumnWidth : Nothing
+    , breadcrumbsAction : input.breadcrumbsAction
+    , showChildrenCount : input.showChildrenCount
+    , foldColumnWidth : input.foldColumnWidth
     }
 
 
@@ -270,6 +283,7 @@ component' modes rconfig mbChildComp =
       { size = input.size
       , tree = input.tree
       , elements = input.elements
+      , exports = input.exports
       , depthLimit = input.depthLimit
       , childrenLimit = input.childrenLimit
       , focus = fromMaybe Path.root input.mbFocus
@@ -580,20 +594,20 @@ component' modes rconfig mbChildComp =
               , HP.value $ case state.exportMode of
                     Json -> TreeConv.writeJSON state.tree
                     Text tmode -> TreeConv.toString tmode SvgI._export state.tree
+                    Dot -> TreeConv.toDotText'
+                              (TreeConv.dotConvertWithLabel
+                                    (const $ SvgI._export >>> TreeConv.DotId) -- TODO
+                                    (const $ SvgI._export)
+                              )
+                              state.tree
               , HP.readOnly true
               , HP.rows 10
               , HP.cols 50
               ]
             , HH.div
               []
-              [ _qbutton state.theme "JSON"      $ SwitchExport Json
-              , _qbutton state.theme "Indent"    $ SwitchExport $ Text TreeConv.Indent
-              , _qbutton state.theme "Dashes"    $ SwitchExport $ Text TreeConv.Dashes
-              , _qbutton state.theme "Corners"   $ SwitchExport $ Text TreeConv.Corners
-              , _qbutton state.theme "Paths"     $ SwitchExport $ Text TreeConv.Paths
-              , _qbutton state.theme "Lines"     $ SwitchExport $ Text TreeConv.Lines
-              , _qbutton state.theme "Triangles" $ SwitchExport $ Text TreeConv.Triangles
-              ]
+               $  (\exp -> _qbutton state.theme (exportLabel exp) $ SwitchExport exp)
+              <$> Set.toUnfoldable state.exports
             ]
 
         {- Zoom & Size -}
@@ -799,6 +813,7 @@ component' modes rconfig mbChildComp =
           { size : s.size
           , tree : TreeConv.fromString SvgI._import userInput <#> fromMaybe SvgI.default
           , elements : s.elements
+          , exports : s.exports
           , theme : s.theme
           , depthLimit : s.depthLimit
           , childrenLimit : s.childrenLimit
@@ -1065,3 +1080,45 @@ _graphStatus state =
         Focused _   -> SvgTree.GHoverFocus
         LostFocus _ -> SvgTree.GGhostFocus
         None        -> SvgTree.GNormal
+
+
+exportLabel :: ExportMode -> String
+exportLabel = case _ of
+  Json -> "JSON"
+  Dot -> "DOT"
+  Text TreeConv.Lines -> "Lines"
+  Text TreeConv.Indent -> "Indent"
+  Text TreeConv.Paths -> "Paths"
+  Text TreeConv.Corners -> "Corners"
+  Text TreeConv.Triangles -> "Triangles"
+  Text TreeConv.Dashes -> "Dashes"
+
+
+instance Eq ExportMode where
+  eq Json Json = true
+  eq Dot Dot = true
+  eq (Text TreeConv.Lines)     (Text TreeConv.Lines) = true
+  eq (Text TreeConv.Indent)    (Text TreeConv.Indent) = true
+  eq (Text TreeConv.Paths)     (Text TreeConv.Paths) = true
+  eq (Text TreeConv.Corners)   (Text TreeConv.Corners) = true
+  eq (Text TreeConv.Triangles) (Text TreeConv.Triangles) = true
+  eq (Text TreeConv.Dashes)    (Text TreeConv.Dashes) = true
+  eq _ _ = false
+
+instance Ord ExportMode where
+  compare Json Json = EQ
+  compare Dot Dot = EQ
+  compare (Text TreeConv.Lines)     (Text TreeConv.Lines) = EQ
+  compare (Text TreeConv.Indent)    (Text TreeConv.Indent) = EQ
+  compare (Text TreeConv.Paths)     (Text TreeConv.Paths) = EQ
+  compare (Text TreeConv.Corners)   (Text TreeConv.Corners) = EQ
+  compare (Text TreeConv.Triangles) (Text TreeConv.Triangles) = EQ
+  compare (Text TreeConv.Dashes)    (Text TreeConv.Dashes) = EQ
+  compare Json _ = GT
+  compare Dot _ = GT
+  compare (Text TreeConv.Lines)     _ = GT
+  compare (Text TreeConv.Indent)    _ = GT
+  compare (Text TreeConv.Paths)     _ = GT
+  compare (Text TreeConv.Corners)   _ = GT
+  compare (Text TreeConv.Triangles) _ = GT
+  compare (Text TreeConv.Dashes)    _ = GT

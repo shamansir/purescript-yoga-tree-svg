@@ -22,7 +22,8 @@ package:
     - web-uievents: ">=4.0.0 <5.0.0"
     - yoga-json: ">=5.1.0 <6.0.0"
     - yoga-tree: ">=1.0.0 <2.0.0"
-    - yoga-tree-utils: ">=0.1.0 <0.2.0"
+    - yoga-tree-utils: ">=2.0.0 <3.0.0"
+    - dotlang: ">=4.0.0 <5.0.0"
   bundle:
     module: Demo
   test:
@@ -40,5 +41,9 @@ workspace:
   packageSet:
     registry: 65.1.0
   extraPackages:
-    yoga-tree-utils: 0.1.0
+    dotlang: 4.0.0
+    yoga-tree-utils:
+      git: https://github.com/shamansir/purescript-yoga-tree-utils.git
+      # ref: 889345c3dd2f5569fe919359aa5fa09d13b7378f
+      ref: a72990a0191ac821e88b9bf095ca81a23394dbbc
     play: 0.1.0
