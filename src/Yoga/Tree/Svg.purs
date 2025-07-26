@@ -119,6 +119,7 @@ type Input a =
     , childrenLimit :: SvgTree.SoftLimit
     , mbFocus :: Maybe Path
     , breadcrumbsAction :: Boolean
+    , showChildrenCount :: Boolean
     }
 
 
@@ -149,6 +150,7 @@ type State a =
     , numKeyBuffer :: Array Int
     , pinnedScrollTo :: Maybe Int
     , breadcrumbsAction :: Boolean
+    , showChildrenCount :: Boolean
     }
 
 
@@ -213,6 +215,7 @@ component' modes rconfig mbChildComp =
     -- , depthLimit : SvgTree.Maximum 1
     , childrenLimit : state.childrenLimit
     -- , childrenLimit : SvgTree.Maximum 5
+    , showChildrenCount : state.showChildrenCount
     }
 
   initialState :: Input a -> State a
@@ -237,11 +240,12 @@ component' modes rconfig mbChildComp =
     , numKeyBuffer : []
     , pinnedScrollTo : Nothing
     , breadcrumbsAction : false
+    , showChildrenCount : false
     }
 
 
   receive :: Input a -> State a -> State a
-  receive { tree, size, elements, depthLimit, childrenLimit, mbFocus, theme, breadcrumbsAction } =
+  receive { tree, size, elements, depthLimit, childrenLimit, mbFocus, theme, breadcrumbsAction, showChildrenCount } =
     _
       { size = size
       , tree = tree
@@ -251,6 +255,7 @@ component' modes rconfig mbChildComp =
       , focus = fromMaybe Path.root mbFocus
       , theme = theme
       , breadcrumbsAction = breadcrumbsAction
+      , showChildrenCount = showChildrenCount
       }
 
   events :: SvgTree.Events (Action a) a
@@ -776,6 +781,7 @@ component' modes rconfig mbChildComp =
           , childrenLimit : s.childrenLimit
           , mbFocus : Nothing
           , breadcrumbsAction : s.breadcrumbsAction
+          , showChildrenCount : s.showChildrenCount
           }
     FocusOn path -> do
       H.modify_ $ updateFocus path

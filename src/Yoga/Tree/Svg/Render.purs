@@ -71,6 +71,12 @@ data NodeQuery x = NodeQuery
 type NodeOutput = Void
 
 
+data NodeDecoration
+    = NDNone
+    | NDLabel
+    | NDLabelAndChildren
+
+
 data NodeMode
     = Text
     | JustNode
@@ -342,6 +348,7 @@ type Geometry =
     , scaleLimit :: { min :: Number, max :: Number }
     , depthLimit :: SoftLimit
     , childrenLimit :: SoftLimit
+    , showChildrenCount :: Boolean -- TODO: move to `NodeMode / NodeDecoration`
     }
 
 
@@ -408,17 +415,21 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
         geom    = config.geometry :: Geometry
         rconfig = config.render :: RenderConfig a
         vconfig = toValueConfig config :: ValueConfig a
+        -- TODO: too many lookups by the same path both in the graph and in the map, try to reduce to one
         statusOf :: Path -> NodeStatus
         statusOf path = Graph.lookup path graph <#> _statusOf # fromMaybe Normal
+        childrenCountAt :: Path -> Int
+        childrenCountAt path = Map.lookup path positionsMap <#> Tuple.snd <#> Array.length # fromMaybe 0
         valuesGraph :: Graph Path a
         valuesGraph = graph <#> _valueOf
         positionsMap :: PositionedGraphMap (Visibility a)
         positionsMap = distributePositions from geom rconfig.componentSize valuesGraph
-        keyLabelOffset = { x : -1.0 * (geom.valueRadius / 2.0), y : -7.0 }
+        keyLabelOffset = { x : -6.0 * (geom.valueRadius / 2.0), y : 0.0 }
         depthLimitOffset = { x : -1.0 * (geom.valueRadius / 2.0), y : 3.0 * geom.valueRadius }
-        chOffsetY = 3.0 -- 0.0
+        chidrenCountOffset = { x : -3.0 * (geom.valueRadius / 2.0), y : -2.5 * geom.valueRadius }
+        chOffsetY = -0.5 * geom.valueRadius
         childLimitOffsetR = { x : 3.0 * (geom.valueRadius / 2.0), y : chOffsetY }
-        childLimitOffsetL = { x : -1.0 * (geom.valueRadius / 2.0) - 15.0, y : chOffsetY }
+        childLimitOffsetL = { x : -2.0 * (geom.valueRadius / 2.0) - 15.0, y : chOffsetY }
 
         renderValue :: Path -> Positioned (Visibility a) -> _
         renderValue nodePath { x, y, value } =
@@ -429,7 +440,7 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
                 , HE.onMouseOver $ const $ events.valueOver  nodePath $ fromVis value
                 , HE.onMouseOut  $ const $ events.valueOut   nodePath $ fromVis value
                 ]
-                $ [ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath $ fromVis value
+                [ _renderValue gstatus vconfig _item mbComponent (statusOf nodePath) { x : 0.0, y : 0.0 } nodePath $ fromVis value
                 , case (statusOf nodePath) of
                     KeysNext ->
                         textAt keyLabelOffset Style.orA $
@@ -437,20 +448,26 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
                             Just lastVal -> show lastVal
                             Nothing -> "?"
                     _ -> noText
+                , if config.geometry.showChildrenCount then
+                    let childrenCount = childrenCountAt nodePath
+                    in if childrenCount > 0 then
+                        textAt chidrenCountOffset Style.cyB $ "{" <> show childrenCount <> "}"
+                    else noText
+                  else noText
                 , case value of
                     AllVisible _ -> noText
                     DepthLimitReached _ ->
-                        textAt depthLimitOffset Style.maB "↓"
+                        textAt depthLimitOffset Style.yeB "↓"
                     ChildrenLimitReached chLimit _ ->
                         case chLimit of
                             AtStart _ ->
-                                textAt childLimitOffsetR Style.maB "->"
+                                textAt childLimitOffsetR Style.yeB "->"
                             Between _ _ ->
                                 HS.g []
-                                    [ textAt childLimitOffsetL Style.maB "<-"
-                                    , textAt childLimitOffsetR Style.maB "->"
+                                    [ textAt childLimitOffsetL Style.yeB "<-"
+                                    , textAt childLimitOffsetR Style.yeB "->"
                                     ]
-                            AtEnd _ _ -> textAt childLimitOffsetL Style.maB "<-"
+                            AtEnd _ _ -> textAt childLimitOffsetL Style.yeB "<-"
                             -- AtStart n -> "0-" <> show (n - 1) <> "->"
                             -- Between a b -> "<-" <> show a <> "-" <> show (b - 1) <> "->"
                             -- AtEnd a b -> "<-" <> show a <> "-" <> show (b - 1)

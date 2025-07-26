@@ -305,6 +305,7 @@ component startFromTree =
       , childrenLimit : maybe YST.Infinite YST.Maximum state.mbChildrenLimit
       , mbFocus : state.mbFocus
       , breadcrumbsAction : true
+      , showChildrenCount : true
       }
 
   child :: YST.NodeComponent m DemoItem
@@ -361,7 +362,7 @@ component startFromTree =
           _ -> ("" /\ "")
         optsMap = Map.fromFoldable $
           if String.length opts > 0 then
-            optPair <$> String.split (Pattern "=") <$> (String.split (Pattern ",") $ String.drop 1 opts)
+            optPair <$> String.split (Pattern "=") <$> (String.split (Pattern "&") $ String.drop 1 opts)
           else
             []
         example =
