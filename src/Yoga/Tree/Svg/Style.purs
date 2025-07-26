@@ -142,7 +142,7 @@ foldRepBox size = "position: relative; user-select: none; overflow: scroll; widt
 foldRepLine :: HSA.Color -> String
 foldRepLine c = "display: block; background-color: " <> pc c <> ";"
 foldRepColumn :: Number -> Int -> String
-foldRepColumn mult n = "min-width: 60px; position: absolute; top: 0; left: " <> show (Int.toNumber n * mult) <> "px;"
+foldRepColumn mult n = "width: " <> show (mult - 15.0) <> "px; position: absolute; top: 0; left: " <> show (Int.toNumber n * mult) <> "px;"
 foldRepIndent = "display: inline-block; width: 10px; min-width: 10px; opacity: 0.3; color: lightgray;" :: String
 jsonRepBox = "user-select: none;" :: String
 txLabel :: Theme -> String
