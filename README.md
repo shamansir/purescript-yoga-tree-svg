@@ -50,4 +50,4 @@ The SVG Renderer for [Yoga Tree](https://pursuit.purescript.org/packages/purescr
   * `#depth=1` - limit depth visibility to no more than one level deep;
   * `#children=5` - limit children to no more than 5 children visible;
 * And, you can combine any options using comma:
-  * `#depth=1,ex=many,path=2-5,theme=dark`
+  * `#depth=1&ex=many&path=2-5&theme=dark`

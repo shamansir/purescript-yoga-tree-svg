@@ -363,6 +363,8 @@ component' modes rconfig mbChildComp =
 
       bo = { withAction : state.breadcrumbsAction }
 
+      label content = HH.span [ HP.style $ Style.txLabel state.theme ] [ HH.text content ]
+
       renderElement lo = htmlMoveTo lo.rect.pos $ pure $ case lo.v of
 
         {- Graph component -}
@@ -401,14 +403,14 @@ component' modes rconfig mbChildComp =
               Just _  -> Style.breadcrumbsWithSelection
               Nothing -> Style.breadcrumbs
             ]
-            [ HH.text "Location: "
-            , renderPath (Breadcrumbs bo) gconfig.render state.tree state.focus
+            [ label "Location: "
+            , renderPath state.theme (Breadcrumbs bo) gconfig.render state.tree state.focus
             , case state.selection of
                 Just selPath ->
                   HH.div
                     []
-                    [ HH.text "Selection:"
-                    , renderPath (Breadcrumbs bo) gconfig.render state.tree selPath
+                    [ label "Selection:"
+                    , renderPath state.theme (Breadcrumbs bo) gconfig.render state.tree selPath
                     ]
                 Nothing ->
                   HH.text ""
@@ -460,7 +462,7 @@ component' modes rconfig mbChildComp =
           HH.div
             [ HP.style $ Style.historyBox state.theme
             ]
-            $ (HH.div [] <<< pure <<< renderPath SingleGo gconfig.render state.tree)
+            $ (HH.div [] <<< pure <<< renderPath state.theme SingleGo gconfig.render state.tree)
             <$> Array.reverse state.history
 
         {- Current Pinned -}
@@ -468,7 +470,7 @@ component' modes rconfig mbChildComp =
           let
             pinnedCount = Set.size state.pinned
             pinnedLabel = if pinnedCount > 0 then show pinnedCount <> " pinned:" else ""
-            pinScrollButton n = _qbutton (show $ n + 1) $ PinScroll n
+            pinScrollButton n = _qbutton state.theme (show $ n + 1) $ PinScroll n
             checkScroll Nothing pinnedArr = pinnedArr
             checkScroll (Just n) pinnedArr = Array.drop n pinnedArr
             -- buttonAction =
@@ -483,9 +485,9 @@ component' modes rconfig mbChildComp =
                 [ HP.style Style.pinnedEdit ]
                 [ if pinnedCount > 0 then
                     if not state.pinnedTextMode then
-                      _qbutton "Text" EnterPinTextMode -- $ if state.pinnedTextMode then EnterPinTextMode else LeavePinTextMode
+                      _qbutton state.theme "Text" EnterPinTextMode -- $ if state.pinnedTextMode then EnterPinTextMode else LeavePinTextMode
                     else
-                      _qbutton "Exit" LeavePinTextMode
+                      _qbutton state.theme "Exit" LeavePinTextMode
                   else HH.text ""
                 ]
 
@@ -563,13 +565,13 @@ component' modes rconfig mbChildComp =
               ]
             , HH.div
               []
-              [ _qbutton "JSON"      $ SwitchExport Json
-              , _qbutton "Indent"    $ SwitchExport $ Text TreeConv.Indent
-              , _qbutton "Dashes"    $ SwitchExport $ Text TreeConv.Dashes
-              , _qbutton "Corners"   $ SwitchExport $ Text TreeConv.Corners
-              , _qbutton "Paths"     $ SwitchExport $ Text TreeConv.Paths
-              , _qbutton "Lines"     $ SwitchExport $ Text TreeConv.Lines
-              , _qbutton "Triangles" $ SwitchExport $ Text TreeConv.Triangles
+              [ _qbutton state.theme "JSON"      $ SwitchExport Json
+              , _qbutton state.theme "Indent"    $ SwitchExport $ Text TreeConv.Indent
+              , _qbutton state.theme "Dashes"    $ SwitchExport $ Text TreeConv.Dashes
+              , _qbutton state.theme "Corners"   $ SwitchExport $ Text TreeConv.Corners
+              , _qbutton state.theme "Paths"     $ SwitchExport $ Text TreeConv.Paths
+              , _qbutton state.theme "Lines"     $ SwitchExport $ Text TreeConv.Lines
+              , _qbutton state.theme "Triangles" $ SwitchExport $ Text TreeConv.Triangles
               ]
             ]
 
@@ -577,9 +579,9 @@ component' modes rconfig mbChildComp =
         L.E L.ZoomControls ->
           HH.div
             [ HP.style Style.zoomBox ]
-            [ _qbutton "Reset zoom" ResetZoom
-            , HH.span [ HP.style Style.zoomItem ] [ HH.text $ "Zoom : " <> (String.take 6 $ show state.zoom) ]
-            , HH.span [ HP.style Style.zoomItem ] [ HH.text $ "Size : " <> show state.size.width <> "x" <> show state.size.height ]
+            [ _qbutton state.theme "Reset zoom" ResetZoom
+            , HH.span [ HP.style Style.zoomItem ] [ label $ "Zoom : " <> (String.take 6 $ show state.zoom) ]
+            , HH.span [ HP.style Style.zoomItem ] [ label $ "Size : " <> show state.size.width <> "x" <> show state.size.height ]
             ]
 
         {- Keyboard hints -}
@@ -588,24 +590,24 @@ component' modes rconfig mbChildComp =
             [ HP.style $ Style.hintsBox state.theme ]
             $ HH.span [ HP.style Style.hintsLine ] <$> pure <$>
               (
-              [ HH.text "\"+\" to slightly zoom in"
-              , HH.text "\"-\" to slightly zoom out"
-              , HH.text "\"=\" to reset zoom"
-              , HH.text $ if Array.length state.history > 1 then "<Beckspace> to navigate one step back in history" else ""
+              [ label "\"+\" to slightly zoom in"
+              , label "\"-\" to slightly zoom out"
+              , label "\"=\" to reset zoom"
+              , label $ if Array.length state.history > 1 then "<Beckspace> to navigate one step back in history" else ""
               ]
               <>
               case state.selection of
                 Just _ ->
-                    [ HH.text "<Escape> to cancel selection"
-                    , HH.text "<number> to select move to a next child"
-                    , HH.text "arrows to navigate tree up/down/right/left"
-                    , HH.text "<Enter> to navigate to selected node"
-                    , HH.text "<.> to pin selected node"
+                    [ label "<Escape> to cancel selection"
+                    , label "<number> to select move to a next child"
+                    , label "arrows to navigate tree up/down/right/left"
+                    , label "<Enter> to navigate to selected node"
+                    , label "<.> to pin selected node"
                     ]
                 Nothing ->
-                    [ HH.text "<Space> to start navigating with keyboard"
-                    , HH.text "<.> to pin hovered node"
-                    , if Path.depth state.focus > 0 then HH.text "\"*\" or <Tab> to return to the root" else HH.text ""
+                    [ label "<Space> to start navigating with keyboard"
+                    , label "<.> to pin hovered node"
+                    , if Path.depth state.focus > 0 then label "\"*\" or <Tab> to return to the root" else label ""
                     ]
               )
 
@@ -686,13 +688,13 @@ component' modes rconfig mbChildComp =
       [ HH.div
         [ ]
         [ if not $ Set.member nodePath state.pinned then
-            _qbutton "Pin" $ Pin nodePath
+            _qbutton state.theme "Pin" $ Pin nodePath
           else
-            _qbutton "Unpin" $ UnPin nodePath
+            _qbutton state.theme "Unpin" $ UnPin nodePath
         , case pupMode of
-            Pinned    -> renderPath SingleGo config state.tree nodePath
-            Selection -> renderPath ReadOnly config state.tree nodePath
-            Preview   -> renderPath ReadOnly config state.tree nodePath
+            Pinned    -> renderPath state.theme SingleGo config state.tree nodePath
+            Selection -> renderPath state.theme ReadOnly config state.tree nodePath
+            Preview   -> renderPath state.theme ReadOnly config state.tree nodePath
         ]
       , case pupMode of
         Pinned    -> pinnedAt  state nodeMode nodePath
@@ -954,8 +956,8 @@ _isArrowKey = case _ of
     _ -> Nothing
 
 
-_qbutton :: forall p action. String -> action -> HH.HTML p action
-_qbutton = _qbutton' Style.button
+_qbutton :: forall p action. Style.Theme -> String -> action -> HH.HTML p action
+_qbutton theme = _qbutton' $ Style.button theme
 
 
 _qbutton' :: forall p action. String -> String -> action -> HH.HTML p action
@@ -967,33 +969,33 @@ _qbutton' style label action =
       [ HH.text label ]
 
 
-_pathStepButtonRaw :: forall p a. Boolean -> String -> Maybe (Action a) -> HH.HTML p (Action a)
-_pathStepButtonRaw isReadOnly label = case _ of
-    Just action -> _qbutton' (Style.pathStep isReadOnly) label action
+_pathStepButtonRaw :: forall p a. Style.Theme -> Boolean -> String -> Maybe (Action a) -> HH.HTML p (Action a)
+_pathStepButtonRaw theme isReadOnly label = case _ of
+    Just action -> _qbutton' (Style.pathStep theme isReadOnly) label action
     Nothing ->
       HH.span
-        [ HP.style (Style.pathStep isReadOnly) ]
+        [ HP.style (Style.pathStep theme isReadOnly) ]
         [ HH.text label ]
 
 
-_pathRootButton :: forall a p. Boolean -> (Path -> a -> String) -> Tree a -> HH.HTML p (Action a)
-_pathRootButton isReadOnly toLabel tree =
+_pathRootButton :: forall a p. Style.Theme -> Boolean -> (Path -> a -> String) -> Tree a -> HH.HTML p (Action a)
+_pathRootButton theme isReadOnly toLabel tree =
     let
       mbValueAt = tree # Path.find Path.root <#> Tree.value
       buttonLabel = maybe "*" (\val -> toLabel Path.root val <> " [*]") mbValueAt
-    in _pathStepButtonRaw isReadOnly buttonLabel $ Just $ FocusOn Path.root
+    in _pathStepButtonRaw theme isReadOnly buttonLabel $ Just $ FocusOn Path.root
 
 
-_pathReadOnlyRoot :: forall a p. (Path -> a -> String) -> Tree a -> HH.HTML p (Action a)
-_pathReadOnlyRoot toLabel tree =
+_pathReadOnlyRoot :: forall a p. Style.Theme -> (Path -> a -> String) -> Tree a -> HH.HTML p (Action a)
+_pathReadOnlyRoot theme toLabel tree =
     let
       mbValueAt = tree # Path.find Path.root <#> Tree.value
       buttonLabel = maybe "*" (\val -> toLabel Path.root val <> " [*]") mbValueAt
-    in _pathStepButtonRaw false buttonLabel Nothing
+    in _pathStepButtonRaw theme false buttonLabel Nothing
 
 
-_pathStepButton :: forall a p. Boolean -> (Path -> a -> String) -> Tree a -> Path -> Int -> Int -> HH.HTML p (Action a)
-_pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
+_pathStepButton :: forall a p. Style.Theme -> Boolean -> (Path -> a -> String) -> Tree a -> Path -> Int -> Int -> HH.HTML p (Action a)
+_pathStepButton theme isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
     -- pStepIndexis the index of the depth layer.
     -- pValueAtDepth is the position of the node at this level of depth
     let
@@ -1004,31 +1006,31 @@ _pathStepButton isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth =
       buttonLabel = maybe (show pValueAtDepth) (\val -> toLabel curPath val <> " [" <> show pValueAtDepth <> "]") mbValueAt
     in
     if not isReadOnly && not isLast
-      then _pathStepButtonRaw false buttonLabel $ Just $ FocusOn curPath
-      else _pathStepButtonRaw true  buttonLabel Nothing
+      then _pathStepButtonRaw theme false buttonLabel $ Just $ FocusOn curPath
+      else _pathStepButtonRaw theme true  buttonLabel Nothing
 
 
-renderPath :: forall p a. PathMode -> SvgTree.RenderConfig a -> Tree a -> Path -> HH.HTML p (Action a)
-renderPath (Breadcrumbs { withAction }) config tree path =
+renderPath :: forall p a. Style.Theme -> PathMode -> SvgTree.RenderConfig a -> Tree a -> Path -> HH.HTML p (Action a)
+renderPath theme (Breadcrumbs { withAction }) config tree path =
   case Path.toArray path of
     [] ->
-      HH.div [ HP.style Style.pathBox ] [ _pathReadOnlyRoot config.valueLabel tree ]
+      HH.div [ HP.style Style.pathBox ] [ _pathReadOnlyRoot theme config.valueLabel tree ]
     pathArr ->
       HH.div
         [ HP.style Style.pathBox ]
-        $ _pathRootButton false config.valueLabel tree
-        : mapWithIndex (_pathStepButton false config.valueLabel tree path) pathArr
-       <> (if withAction then [ _qbutton "^" $ BreadcrumbsAction path ] else [ ])
-renderPath ReadOnly config tree path =
+        $ _pathRootButton theme false config.valueLabel tree
+        : mapWithIndex (_pathStepButton theme false config.valueLabel tree path) pathArr
+       <> (if withAction then [ _qbutton theme "^" $ BreadcrumbsAction path ] else [ ])
+renderPath theme ReadOnly config tree path =
   HH.div
     [ HP.style Style.pathBox ]
-    $ _pathRootButton true config.valueLabel tree
-    : mapWithIndex (_pathStepButton true config.valueLabel tree path) (Path.toArray path)
-renderPath SingleGo config tree path =
+    $ _pathRootButton theme true config.valueLabel tree
+    : mapWithIndex (_pathStepButton theme true config.valueLabel tree path) (Path.toArray path)
+renderPath theme SingleGo config tree path =
   HH.div
     [ HP.style Style.pathWithGo ]
-    [ _qbutton "Go" $ FocusOn path
-    , renderPath ReadOnly config tree path
+    [ _qbutton theme "Go" $ FocusOn path
+    , renderPath theme ReadOnly config tree path
     ]
 
 

@@ -144,12 +144,41 @@ foldRepColumn :: Int -> String
 foldRepColumn n = "min-width: 60px; position: absolute; top: 0; left: " <> show (n * 100) <> "px;"
 foldRepIndent = "display: inline-block; width: 10px; min-width: 10px; opacity: 0.3; color: lightgray;" :: String
 jsonRepBox = "user-select: none;" :: String
-button   = "cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0 2px; border-radius: 5px; border: 1px solid black; font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;" :: String
+txLabel :: Theme -> String
+txLabel theme = "color: " <> pc (tx theme) <> ";"
+{- Button -}
+buttonTextColor :: Theme -> String
+buttonTextColor Light = "rgb(0,0,0)"
+buttonTextColor Dark = "rgb(255,255,255)"
+buttonBGColor :: Theme -> String
+buttonBGColor Light = "rgb(239, 239, 239)"
+buttonBGColor Dark = "rgb(30,30,50)"
+button :: Theme -> String
+button theme = "background-color: " <> buttonBGColor theme <> "; color: " <> buttonTextColor theme <> "; cursor: pointer; pointer-events: all; padding: 2px 5px; margin: 0 2px; border-radius: 5px; border: 1px solid black; font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;"
+{- Path -}
 pathBox = "display: inline-block;" :: String
 pathWithGo = "" :: String
-pathStep :: Boolean -> String
-pathStep true  = "cursor: auto;    pointer-events: all; display: inline-block; padding: 2px 5px; margin: 2px 2px; border-radius: 5px; border: 1px solid rgb(230,230,230); font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;"
-pathStep false = "cursor: pointer; pointer-events: all; display: inline-block; padding: 2px 5px; margin: 2px 2px; border-radius: 5px; border: 1px solid rgb(90,90,90); font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;"
+pathTextColor :: Theme -> String
+pathTextColor = pc <<< tx
+pathROTextColor :: Theme -> String
+pathROTextColor Light = "rgb(90,90,90)"
+pathROTextColor Dark = "rgb(120,120,120)"
+pathBorder :: Theme -> String
+pathBorder Light = "rgb(120,120,120)" -- pc <<< ui
+pathBorder Dark = "rgb(10,10,10)"
+pathROBorder :: Theme -> String
+pathROBorder Light = "rgb(120,120,120)"
+pathROBorder Dark  = "rgb(70,70,70)"
+pathBGColor :: Theme -> String
+pathBGColor Light = "rgb(239, 239, 239)"
+pathBGColor Dark = "rgb(80, 80, 80)"
+pathROBGColor :: Theme -> String
+pathROBGColor Light = "rgb(239, 239, 239)"
+pathROBGColor Dark = "rgb(10,10,10)"
+pathStep :: Theme -> Boolean -> String
+pathStep theme true  = "background-color: " <> pathROBGColor theme <> "; color: " <> pathROTextColor theme <> "; cursor: auto;    pointer-events: all; display: inline-block; padding: 2px 5px; margin: 2px 2px; border-radius: 5px; border: 1px solid " <> pathROBorder theme <> "; font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;"
+pathStep theme false = "background-color: " <> pathBGColor theme   <> "; color: " <> pathTextColor theme   <> "; cursor: pointer; pointer-events: all; display: inline-block; padding: 2px 5px; margin: 2px 2px; border-radius: 5px; border: 1px solid " <> pathBorder theme   <> "; font-size: 9px; user-select: none; font-family: \"JetBrains Mono\", sans-serif;"
+{- Other -}
 zoomItem = "padding: 2px 5px;" :: String
 hintsBox :: Theme -> String
 hintsBox theme = "margin: 5px; max-width: 400px; padding: 2px 5px; border-radius: 5px; border: 1px solid rgb(190,190,190); background-color: " <> pc (background theme) <> ";"
