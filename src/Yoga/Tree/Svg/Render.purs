@@ -2,7 +2,7 @@ module Yoga.Tree.Svg.Render
     ( Slots, NodeSlot, _item, _preview
     , GraphStatus(..), NodeMode(..), EdgeMode(..), NodeStatus(..), SoftLimit(..)
     , NodeQuery, NodeOutput
-    , GraphConfig, Modes, RenderConfig, Events, Geometry, ValueConfig
+    , GraphConfig, Modes, Events, Geometry, ValueConfig
     , NodeComponent, NodeComponentInput, GraphHtml
     , renderGraph, renderGraph_, renderGraph'
     , renderGraphFrom, renderGraphFrom_, renderGraphFrom'
@@ -42,6 +42,8 @@ import Yoga.Tree.Extended.Path (root, up, lastPos, depth, startsWith) as Path
 import Yoga.Tree.Svg.Geometry (Position, Positioned, Size, findPosition, scale, rotateBy)
 import Yoga.Tree.Svg.Style as Style
 import Yoga.Tree.Svg.Style (Theme(..))
+import Yoga.Tree.Svg.TreeValue (class IsSvgTreeValue)
+import Yoga.Tree.Svg.TreeValue as SvgI
 
 import Halogen as H
 import Halogen.HTML (HTML)
@@ -297,20 +299,8 @@ distributePositions' from geom getSize graph =
     distributePositions from geom getSize graph <#> (map Array.toUnfoldable) # Graph.fromMap
 
 
-type RenderConfig a =
-    { valueLabel :: Path -> a -> String
-    , valueColor :: Theme -> Path -> a -> HSA.Color
-    , valueLabelColor :: Theme -> Path -> a -> HSA.Color
-    , valueLabelWidth :: Path -> a -> Int
-    , edgeColor :: Theme -> Path -> a -> Path -> a -> HSA.Color
-    , edgeLabel :: Path -> a -> Path -> a -> String
-    , componentSize :: Path -> a -> { width :: Number, height :: Number }
-    }
-
-
 type GraphConfig a i =
-    { render :: RenderConfig a
-    , geometry :: Geometry
+    { geometry :: Geometry
     , modes :: Modes
     , events :: Events i a
     , theme :: Theme
@@ -318,8 +308,7 @@ type GraphConfig a i =
 
 
 type ValueConfig a =
-    { render :: RenderConfig a
-    , geometry :: Geometry
+    { geometry :: Geometry
     , nodeMode :: NodeMode
     , theme :: Theme
     }
@@ -385,36 +374,35 @@ _valueOf = Tuple.snd
 
 
 toValueConfig :: forall a i. GraphConfig a i -> ValueConfig a
-toValueConfig { render, modes, geometry, theme } =
-    { render, theme, geometry, nodeMode : modes.nodeMode }
+toValueConfig { modes, geometry, theme } =
+    { theme, geometry, nodeMode : modes.nodeMode }
 
 
-renderGraph :: forall a i m. GraphStatus -> GraphConfig a i -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraph :: forall a i m. IsSvgTreeValue a => GraphStatus -> GraphConfig a i -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
 renderGraph gstatus config = renderGraph' gstatus config Nothing
 
 
-renderGraph_ :: forall a i m. GraphStatus -> GraphConfig a i -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraph_ :: forall a i m. IsSvgTreeValue a => GraphStatus -> GraphConfig a i -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
 renderGraph_ gstatus config childComp = renderGraph' gstatus config $ Just childComp
 
 
-renderGraph' :: forall a i m. GraphStatus -> GraphConfig a i -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraph' :: forall a i m. IsSvgTreeValue a => GraphStatus -> GraphConfig a i -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
 renderGraph' = renderGraphFrom' { root : Path.root, current : Path.root }
 
 
-renderGraphFrom :: forall a i m. From -> GraphStatus -> GraphConfig a i -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraphFrom :: forall a i m. IsSvgTreeValue a => From -> GraphStatus -> GraphConfig a i -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
 renderGraphFrom from gstatus config = renderGraphFrom' from gstatus config Nothing
 
 
-renderGraphFrom_ :: forall a i m. From -> GraphStatus -> GraphConfig a i -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraphFrom_ :: forall a i m. IsSvgTreeValue a => From -> GraphStatus -> GraphConfig a i -> NodeComponent m a -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
 renderGraphFrom_ from gstatus config childComp = renderGraphFrom' from gstatus config $ Just childComp
 
 
-renderGraphFrom' :: forall a i m. From -> GraphStatus -> GraphConfig a i -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
+renderGraphFrom' :: forall a i m. IsSvgTreeValue a => From -> GraphStatus -> GraphConfig a i -> Maybe (NodeComponent m a) -> Events i a -> Graph Path (WithStatus a) -> Array (GraphHtml m i)
 renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ mapWithIndex renderNode positionsMap
     where
         modes   = config.modes :: Modes
         geom    = config.geometry :: Geometry
-        rconfig = config.render :: RenderConfig a
         vconfig = toValueConfig config :: ValueConfig a
         -- TODO: too many lookups by the same path both in the graph and in the map, try to reduce to one
         statusOf :: Path -> NodeStatus
@@ -424,7 +412,7 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
         valuesGraph :: Graph Path a
         valuesGraph = graph <#> _valueOf
         positionsMap :: PositionedGraphMap (Visibility a)
-        positionsMap = distributePositions from geom rconfig.componentSize valuesGraph
+        positionsMap = distributePositions from geom SvgI.componentSize valuesGraph
         keyLabelOffset = { x : -6.0 * (geom.valueRadius / 2.0), y : 0.0 }
         depthLimitOffset = { x : -1.0 * (geom.valueRadius / 2.0), y : 3.0 * geom.valueRadius }
         chidrenCountOffset = { x : -3.0 * (geom.valueRadius / 2.0), y : -2.5 * geom.valueRadius }
@@ -479,7 +467,7 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
                     HS.g
                         [ HHP.style Style.edge ]
                         $ pure
-                        $ _renderEdge config.theme gstatus { start : statusOf parentPath, end : statusOf childPath } modes.edgeMode rconfig
+                        $ _renderEdge config.theme gstatus { start : statusOf parentPath, end : statusOf childPath } modes.edgeMode
                         $
                             { start : { path : parentPath, pos : { x : parent.x, y: parent.y }, value : fromVis $ parent.value }
                             , end   : { path : childPath,  pos : { x : child.x,  y: child.y  }, value : fromVis $ child.value  }
@@ -501,33 +489,34 @@ renderGraphFrom' from gstatus config mbComponent events graph = foldl (<>) [] $ 
                 [ HH.text text ]
 
 
-renderPreview :: forall a i m. ValueConfig a -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPreview :: forall a i m. IsSvgTreeValue a => ValueConfig a -> NodeStatus -> Path -> a -> GraphHtml m i
 renderPreview vconfig = _renderPreview _preview vconfig Nothing
 
 
-renderPreview_ :: forall a i m. ValueConfig a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPreview_ :: forall a i m. IsSvgTreeValue a => ValueConfig a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
 renderPreview_ vconfig childComp = _renderPreview _preview vconfig (Just childComp)
 
 
-renderPreview' :: forall a i m. ValueConfig a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPreview' :: forall a i m. IsSvgTreeValue a => ValueConfig a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
 renderPreview' = _renderPreview _preview
 
 
-renderPinned :: forall a i m. ValueConfig a -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPinned :: forall a i m. IsSvgTreeValue a => ValueConfig a -> NodeStatus -> Path -> a -> GraphHtml m i
 renderPinned vconfig = _renderPreview _pinned vconfig Nothing
 
 
-renderPinned_ :: forall a i m. ValueConfig a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPinned_ :: forall a i m. IsSvgTreeValue a => ValueConfig a -> NodeComponent m a -> NodeStatus -> Path -> a -> GraphHtml m i
 renderPinned_ vconfig childComp = _renderPreview _pinned vconfig (Just childComp)
 
 
-renderPinned' :: forall a i m. ValueConfig a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
+renderPinned' :: forall a i m. IsSvgTreeValue a => ValueConfig a -> Maybe (NodeComponent m a) -> NodeStatus -> Path -> a -> GraphHtml m i
 renderPinned' = _renderPreview _pinned
 
 
 _renderPreview
     :: forall slot r' a i m
-     . IsSymbol slot
+     . IsSvgTreeValue a
+    => IsSymbol slot
     => Row.Cons slot NodeSlot r' Slots
     => Proxy slot
     -> ValueConfig a
@@ -538,7 +527,7 @@ _renderPreview
     -> GraphHtml m i
 _renderPreview slot vconfig mbComponent nodeStatus nodePath value =
     let
-        componentSize = vconfig.render.componentSize nodePath value
+        componentSize = SvgI.componentSize nodePath value
         padding = 5.0
         position =
             case vconfig.nodeMode of
@@ -595,8 +584,8 @@ type EdgeDef a = Edge (EdgeJoint a)
 type EdgeStatus = Edge NodeStatus
 
 
-_renderEdge :: forall a p i. Theme -> GraphStatus -> EdgeStatus -> EdgeMode -> RenderConfig a -> EdgeDef a -> HTML p i
-_renderEdge th gstatus estatus EdgeWithLabel rconfig edge =
+_renderEdge :: forall a p i. IsSvgTreeValue a => Theme -> GraphStatus -> EdgeStatus -> EdgeMode -> EdgeDef a -> HTML p i
+_renderEdge th gstatus estatus EdgeWithLabel edge =
     let
         parent = edge.start
         child = edge.end
@@ -608,15 +597,15 @@ _renderEdge th gstatus estatus EdgeWithLabel rconfig edge =
             , HSA.y1 parentPos.y
             , HSA.x2 childPos.x
             , HSA.y2 childPos.y
-            , HSA.stroke $ rconfig.edgeColor th parent.path parent.value child.path child.value
+            , HSA.stroke $ SvgI.edgeColor th parent.path parent.value child.path child.value
             ]
         , HS.text
             [ HSA.x $ parentPos.x + ((childPos.x - parentPos.x) / 2.0)
             , HSA.y $ parentPos.y + ((childPos.y - parentPos.y) / 2.0)
             ]
-            [ HH.text $ rconfig.edgeLabel parent.path parent.value child.path child.value ]
+            [ HH.text $ SvgI.edgeLabel parent.path parent.value child.path child.value ]
         ]
-_renderEdge th gstatus estatus JustEdge rconfig edge =
+_renderEdge th gstatus estatus JustEdge edge =
     let
         parent = edge.start
         child = edge.end
@@ -628,14 +617,16 @@ _renderEdge th gstatus estatus JustEdge rconfig edge =
             , HSA.y1 parentPos.y
             , HSA.x2 childPos.x
             , HSA.y2 childPos.y
-            , HSA.stroke $ rconfig.edgeColor th parent.path parent.value child.path child.value
+            , HSA.stroke $ SvgI.edgeColor th parent.path parent.value child.path child.value
             , HSA.strokeOpacity $ _edgeOpacity gstatus estatus
             ]
         ]
 
+
 _renderValue
     :: forall slot r' i m a
-     . IsSymbol slot
+     . IsSvgTreeValue a
+    => IsSymbol slot
     => Row.Cons slot NodeSlot r' Slots
     => GraphStatus
     -> ValueConfig a
@@ -647,19 +638,19 @@ _renderValue
     -> a
     -> GraphHtml m i
 _renderValue gstatus vconfig =
-    _renderValue' vconfig.theme gstatus vconfig.nodeMode vconfig.geometry vconfig.render
+    _renderValue' vconfig.theme gstatus vconfig.nodeMode vconfig.geometry
 
 
 
 _renderValue'
     :: forall slot r' i m a
-     . IsSymbol slot
+     . IsSvgTreeValue a
+    => IsSymbol slot
     => Row.Cons slot NodeSlot r' Slots
     => Theme
     -> GraphStatus
     -> NodeMode
     -> Geometry
-    -> RenderConfig a
     -> Proxy slot
     -> Maybe (NodeComponent m a)
     -> NodeStatus
@@ -667,14 +658,14 @@ _renderValue'
     -> Path
     -> a
     -> GraphHtml m i
-_renderValue' th gstatus NodeWithLabel geom rconfig _ _ status pos nodePath value =
+_renderValue' th gstatus NodeWithLabel geom _ _ status pos nodePath value =
     HS.g
         []
         [ HS.circle
             [ HSA.cx pos.x
             , HSA.cy pos.y
             , HSA.r geom.valueRadius
-            , HSA.fill          $ rconfig.valueColor th nodePath value
+            , HSA.fill          $ SvgI.valueColor th nodePath value
             , HSA.stroke        $ _strokeFromStatus th status
             , HSA.strokeWidth   $ _strokeWidthFromStatus status
             , HSA.fillOpacity   $ _nodeOpacity gstatus status
@@ -686,7 +677,7 @@ _renderValue' th gstatus NodeWithLabel geom rconfig _ _ status pos nodePath valu
             , HSA.y $ pos.y - 2.0
             , HSA.rx 6.0
             , HSA.ry 6.0
-            , HSA.width $ Int.toNumber (rconfig.valueLabelWidth nodePath value) * 8.0 + 5.0
+            , HSA.width $ Int.toNumber (SvgI.valueLabelWidth nodePath value) * 8.0 + 5.0
             , HSA.height 15.0
             , HSA.fillOpacity $ case status of
                 Normal -> 0.1
@@ -700,34 +691,34 @@ _renderValue' th gstatus NodeWithLabel geom rconfig _ _ status pos nodePath valu
                 _ -> 0.1
             ]
         , HS.text
-            [ HSA.fill $ rconfig.valueLabelColor th nodePath value
+            [ HSA.fill $ SvgI.valueLabelColor th nodePath value
             , HSA.x $ pos.x + 6.0
             , HSA.y $ pos.y + 9.0
             ]
-            [ HH.text $ rconfig.valueLabel nodePath value
+            [ HH.text $ SvgI.valueLabel nodePath value
             ]
         ]
-_renderValue' th gstatus JustNode geom rconfig _ _ status pos nodePath value =
+_renderValue' th gstatus JustNode geom _ _ status pos nodePath value =
     HS.g
         []
         [ HS.circle
             [ HSA.cx pos.x
             , HSA.cy pos.y
             , HSA.r geom.valueRadius
-            , HSA.fill          $ rconfig.valueColor th nodePath value
+            , HSA.fill          $ SvgI.valueColor th nodePath value
             , HSA.stroke        $ _strokeFromStatus th status
             , HSA.strokeWidth   $ _strokeWidthFromStatus status
             , HSA.fillOpacity   $ _nodeOpacity gstatus status
             , HSA.strokeOpacity $ _nodeOpacity gstatus status
             ]
         ]
-_renderValue' th gstatus Component _ _ _ Nothing status pos _ _ =
+_renderValue' th gstatus Component _ _ Nothing status pos _ _ =
     HS.text
         [ HSA.x pos.x, HSA.y pos.y
         , HSA.fill $ HSA.RGB 0 0 0
         ]
         [ HH.text "NO COMPONENT" ]
-_renderValue' th gstatus Component _ _ pslot (Just childComp) status pos nodePath value =
+_renderValue' th gstatus Component _ pslot (Just childComp) status pos nodePath value =
     HS.g
         [ HSA.transform $ pure $ HSA.Translate pos.x pos.y ]
         $ pure
@@ -739,15 +730,15 @@ _renderValue' th gstatus Component _ _ pslot (Just childComp) status pos nodePat
             , path : nodePath
             , value
             }
-_renderValue' th gtatus Text _ rconfig _ _ _ pos nodePath value =
+_renderValue' th gtatus Text _ _ _ _ pos nodePath value =
     HS.g
         []
         [ HS.text
-            [ HSA.fill $ rconfig.valueLabelColor th nodePath value
+            [ HSA.fill $ SvgI.valueLabelColor th nodePath value
             , HSA.x $ pos.x + 6.0
             , HSA.y $ pos.y + 9.0
             ]
-            [ HH.text $ rconfig.valueLabel nodePath value
+            [ HH.text $ SvgI.valueLabel nodePath value
             ]
         ]
 

@@ -12,9 +12,6 @@
               "bifunctors": ">=6.1.0 <7.0.0"
             },
             {
-              "dotlang": ">=4.0.0 <5.0.0"
-            },
-            {
               "effect": ">=4.0.0 <5.0.0"
             },
             {
@@ -81,7 +78,6 @@
             "avar",
             "bifunctors",
             "catenable-lists",
-            "colors",
             "console",
             "const",
             "contravariant",
@@ -89,7 +85,6 @@
             "datetime",
             "distributive",
             "dom-indexed",
-            "dotlang",
             "effect",
             "either",
             "enums",
@@ -131,7 +126,6 @@
             "play",
             "prelude",
             "profunctor",
-            "psci-support",
             "record",
             "refs",
             "safe-coerce",
@@ -710,11 +704,10 @@
       }
     },
     "extra_packages": {
-      "dotlang": "4.0.0",
       "play": "0.1.0",
       "yoga-tree-utils": {
         "git": "https://github.com/shamansir/purescript-yoga-tree-utils.git",
-        "ref": "a72990a0191ac821e88b9bf095ca81a23394dbbc"
+        "ref": "ac70a549a0f8cd611be7d494a534f517967f2634"
       }
     }
   },
@@ -802,19 +795,6 @@
         "unfoldable"
       ]
     },
-    "colors": {
-      "type": "registry",
-      "version": "7.0.1",
-      "integrity": "sha256-udlg/y2PFsHYli8Tgz8BQGGrOjyGo0BcJj36IfgYADs=",
-      "dependencies": [
-        "arrays",
-        "integers",
-        "lists",
-        "numbers",
-        "partial",
-        "strings"
-      ]
-    },
     "console": {
       "type": "registry",
       "version": "6.1.0",
@@ -900,21 +880,6 @@
         "web-clipboard",
         "web-pointerevents",
         "web-touchevents"
-      ]
-    },
-    "dotlang": {
-      "type": "registry",
-      "version": "4.0.0",
-      "integrity": "sha256-Z/2qsjbM4tyY/Q4j1kqjBZyWTGV3+9uiKlNpMLNjf5U=",
-      "dependencies": [
-        "arrays",
-        "colors",
-        "console",
-        "effect",
-        "maybe",
-        "prelude",
-        "psci-support",
-        "strings"
       ]
     },
     "effect": {
@@ -1439,16 +1404,6 @@
         "tuples"
       ]
     },
-    "psci-support": {
-      "type": "registry",
-      "version": "6.0.0",
-      "integrity": "sha256-C6ql4P9TEP06hft/1Z5QumPA4yARR4VIxDdhmL1EO+Y=",
-      "dependencies": [
-        "console",
-        "effect",
-        "prelude"
-      ]
-    },
     "record": {
       "type": "registry",
       "version": "4.0.0",
@@ -1764,17 +1719,14 @@
     "yoga-tree-utils": {
       "type": "git",
       "url": "https://github.com/shamansir/purescript-yoga-tree-utils.git",
-      "rev": "a72990a0191ac821e88b9bf095ca81a23394dbbc",
+      "rev": "ac70a549a0f8cd611be7d494a534f517967f2634",
       "dependencies": [
         "arrays",
         "bifunctors",
-        "dotlang",
-        "either",
         "foldable-traversable",
         "foreign",
         "free",
         "graphs",
-        "lists",
         "maybe",
         "newtype",
         "ordered-collections",

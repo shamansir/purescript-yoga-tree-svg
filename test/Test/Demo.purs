@@ -40,11 +40,13 @@ import Yoga.Tree.Extended ((:<~))
 import Yoga.Tree.Extended (leaf) as Tree
 import Yoga.Tree.Extended.Path (Path) as Tree
 import Yoga.Tree.Extended.Path (fromArray) as Path
-import Yoga.Tree.Svg (NodeComponent, component_, all, Slot, allExports) as YST
-import Yoga.Tree.Svg.Render (Modes, RenderConfig, NodeMode(..), EdgeMode(..), SoftLimit(..)) as YST
+import Yoga.Tree.Svg (NodeComponent, component_, all, Slot) as YST
+import Yoga.Tree.Svg.Render (Modes, NodeMode(..), EdgeMode(..), SoftLimit(..)) as YST
 import Yoga.Tree.Svg.Style (Theme(..), tx, tx2, tx3) as YST
-import Yoga.Tree.Svg.SvgItem (class IsTreeItem, class IsSvgTreeItem)
-import Yoga.Tree.Svg.SvgItem as YSTI
+import Yoga.Tree.Svg.TreeValue (class IsTreeValue, class IsSvgTreeValue)
+import Yoga.Tree.Svg.TreeValue as YSTI
+import Yoga.Tree.Svg.ExportMode (class CustomTreeExport)
+import Yoga.Tree.Svg.ExportMode as YSTEM
 import Yoga.JSON (class WriteForeign, class ReadForeign, readImpl, writeImpl)
 
 import Web.Event.Event as E
@@ -225,13 +227,28 @@ instance Show DemoItem where
   show = case _ of
     IntItem n -> show n
     StrItem str -> str
-instance IsTreeItem DemoItem where
+instance IsTreeValue DemoItem where
   default = IntItem $ -1
-  _export = show
-  _import = Int.fromString >>= maybe (StrItem >>> Just) (\n _ -> Just $ IntItem n)
-instance IsSvgTreeItem DemoItem where
+  _export = const $ show
+  _import _ = Int.fromString >>= maybe (StrItem >>> Just) (\n _ -> Just $ IntItem n)
+instance IsSvgTreeValue DemoItem where
+  edgeColor = \theme _ _ _ _ -> YST.tx theme
+  edgeLabel = \_ _ _ _ -> "E"
+  valueLabel = const exportToString
+  valueLabelColor = \theme _ _ -> YST.tx2 theme
+  valueLabelWidth = \path -> String.length <<< YSTI.valueLabel path
+  valueColor = \theme _ _ -> YST.tx3 theme
+  componentSize = const $ const { width : previewWidth, height : previewHeight }
+
   foldLabel = show
+  pathLabel = const $ exportToString
   pinnedLine = const show
+instance CustomTreeExport DemoItem where
+  exportTree = YSTEM.noCustomExport
+
+
+exportToString :: DemoItem -> String
+exportToString = show
 
 
 instance WriteForeign DemoItem where
@@ -245,18 +262,6 @@ instance ReadForeign DemoItem where
 
 previewWidth = 200.0
 previewHeight = 25.0
-
-
-config :: forall a. IsSvgTreeItem a => YST.RenderConfig a
-config =
-  { edgeColor : \theme _ _ _ _ -> YST.tx theme
-  , edgeLabel : \_ _ _ _ -> "E"
-  , valueLabel : const YSTI.foldLabel
-  , valueLabelColor : \theme _ _ -> YST.tx2 theme
-  , valueLabelWidth : \path -> String.length <<< config.valueLabel path
-  , valueColor : \theme _ _ -> YST.tx3 theme
-  , componentSize  : const $ const { width : previewWidth, height : previewHeight }
-  }
 
 
 modes :: YST.Modes
@@ -296,11 +301,11 @@ component startFromTree =
   render :: forall action. State DemoItem -> H.ComponentHTML action Slots m
   render state =
     HH.slot_ _tree unit
-      (YST.component_ modes config child)
+      (YST.component_ modes child)
       { tree : state.tree
       , size : reduceSize $ fromMaybe defaultSize state.window
       , elements : YST.all
-      , exports : YST.allExports
+      , exports : YSTEM.nonCustom
       , theme : state.theme
       , depthLimit : maybe YST.Infinite YST.Maximum state.mbDepthLimit
       , childrenLimit : maybe YST.Infinite YST.Maximum state.mbChildrenLimit

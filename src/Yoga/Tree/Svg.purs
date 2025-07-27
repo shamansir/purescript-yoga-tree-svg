@@ -3,8 +3,6 @@ module Yoga.Tree.Svg
   , component, component_, init
   , module LayoutEx
   , Query(..), Output(..), Slot
-  , ExportMode(..)
-  , allExports
   ) where
 
 import Prelude
@@ -49,7 +47,7 @@ import Web.UIEvent.WheelEvent as WE
 import Yoga.Tree (Tree)
 import Yoga.Tree.Extended (value, children) as Tree
 import Yoga.Tree.Extended.Convert as TreeConv
-import Yoga.Tree.Extended.Convert.Dot as TreeConv
+-- import Yoga.Tree.Extended.Convert.Dot as TreeConv
 import Yoga.Tree.Extended.Graph (toGraph') as Tree
 import Yoga.Tree.Extended.Path (Path(..))
 import Yoga.Tree.Extended.Path (find, root, toArray, depth, safeAdvance, Dir(..), advanceDir, isNextFor) as Path
@@ -58,8 +56,10 @@ import Yoga.Tree.Svg.Layout as L
 import Yoga.Tree.Svg.Render (WithStatus, statusColor)
 import Yoga.Tree.Svg.Render as SvgTree
 import Yoga.Tree.Svg.Style as Style
-import Yoga.Tree.Svg.SvgItem (class IsSvgTreeItem)
-import Yoga.Tree.Svg.SvgItem (foldLabel, pinnedLine, _export, _import, default) as SvgI
+import Yoga.Tree.Svg.TreeValue (class IsSvgTreeValue)
+import Yoga.Tree.Svg.TreeValue as SvgI
+import Yoga.Tree.Svg.ExportMode (class CustomTreeExport)
+import Yoga.Tree.Svg.ExportMode as SvgEM
 
 -- import Yoga.Tree.Zipper (Path)
 
@@ -85,7 +85,7 @@ data Action a
     | LeaveTreeTextMode
     | EnterPinTextMode
     | LeavePinTextMode
-    | SwitchExport ExportMode
+    | SwitchExport SvgEM.ExportMode
     | FoldSelect ME.MouseEvent Path
     | ToggleFoldMode
     | BreadcrumbsAction Path
@@ -108,17 +108,11 @@ data FoldMode
 --     | PINav
 
 
-data ExportMode
-    = Json
-    | Text TreeConv.Mode
-    | Dot
-
-
 type Input a =
     { tree :: Tree a
     , size :: { width :: Number, height :: Number }
     , elements :: Set L.Element
-    , exports :: Set ExportMode
+    , exports :: Set SvgEM.ExportMode
     , theme :: Style.Theme
     , depthLimit :: SvgTree.SoftLimit
     , childrenLimit :: SvgTree.SoftLimit
@@ -148,9 +142,9 @@ type State a =
     , pinnedTextMode :: Boolean
     , editingSomeText :: Boolean
     , elements :: Set L.Element
-    , exports :: Set ExportMode
+    , exports :: Set SvgEM.ExportMode
     , theme :: Style.Theme
-    , exportMode :: ExportMode
+    , exportMode :: SvgEM.ExportMode
     , foldMode :: FoldMode
     , depthLimit :: SvgTree.SoftLimit
     , childrenLimit :: SvgTree.SoftLimit
@@ -189,17 +183,12 @@ type Slot a = H.Slot Query Output a
 type NodeComponent m a = SvgTree.NodeComponent m a
 
 
-allExports :: Set ExportMode
-allExports = Set.fromFoldable
-    [ Json, Dot, Text TreeConv.Lines, Text TreeConv.Indent, Text TreeConv.Paths, Text TreeConv.Corners, Text TreeConv.Triangles, Text TreeConv.Dashes ]
-
-
 init :: forall a. { width :: Number, height :: Number } -> Tree a -> Input a
 init size tree =
     { size
     , tree
     , elements : L.all
-    , exports : allExports
+    , exports : SvgEM.nonCustom
     , childrenLimit : SvgTree.Infinite
     , depthLimit : SvgTree.Infinite
     , mbFocus : Nothing
@@ -210,16 +199,16 @@ init size tree =
     }
 
 
-component :: forall a m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> SvgTree m a
-component modes rconfig = component' modes rconfig Nothing
+component :: forall a m. MonadEffect m => CustomTreeExport a => IsSvgTreeValue a => SvgTree.Modes -> SvgTree m a
+component modes = component' modes Nothing
 
 
-component_ :: forall a m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> NodeComponent m a -> SvgTree m a
-component_ modes rconfig childComp = component' modes rconfig (Just childComp)
+component_ :: forall a m. MonadEffect m => CustomTreeExport a => IsSvgTreeValue a => SvgTree.Modes -> NodeComponent m a -> SvgTree m a
+component_ modes childComp = component' modes (Just childComp)
 
 
-component' :: forall a m. MonadEffect m => IsSvgTreeItem a => SvgTree.Modes -> SvgTree.RenderConfig a -> Maybe (NodeComponent m a) -> SvgTree m a
-component' modes rconfig mbChildComp =
+component' :: forall a m. MonadEffect m => CustomTreeExport a => IsSvgTreeValue a => SvgTree.Modes -> Maybe (NodeComponent m a) -> SvgTree m a
+component' modes mbChildComp =
   H.mkComponent
     { initialState
     , render
@@ -265,7 +254,7 @@ component' modes rconfig mbChildComp =
     , elements : input.elements
     , exports : input.exports
     , theme : input.theme
-    , exportMode : Json
+    , exportMode : SvgEM.Json
     , foldMode : OnlyFocus
     , depthLimit : input.depthLimit
     , childrenLimit : input.childrenLimit
@@ -305,7 +294,6 @@ component' modes rconfig mbChildComp =
     { geometry : geometry state
     , events
     , modes
-    , render : rconfig
     , theme : state.theme
     }
 
@@ -383,7 +371,7 @@ component' modes rconfig mbChildComp =
 
       sizeOf path =
         case state.tree # Path.find path of
-          Just subTree -> rconfig.componentSize path $ Tree.value subTree
+          Just subTree -> SvgI.componentSize path $ Tree.value subTree
           Nothing -> defaultSelectSize
 
       gconfig = graphConfig state :: SvgTree.GraphConfig a (Action a)
@@ -439,13 +427,13 @@ component' modes rconfig mbChildComp =
               Nothing -> Style.breadcrumbs
             ]
             [ label "Location: "
-            , renderPath state.theme (Breadcrumbs bo) gconfig.render state.tree state.focus
+            , renderPath state.theme (Breadcrumbs bo) state.tree state.focus
             , case state.selection of
                 Just selPath ->
                   HH.div
                     []
                     [ label "Selection:"
-                    , renderPath state.theme (Breadcrumbs bo) gconfig.render state.tree selPath
+                    , renderPath state.theme (Breadcrumbs bo) state.tree selPath
                     ]
                 Nothing ->
                   HH.text ""
@@ -475,7 +463,7 @@ component' modes rconfig mbChildComp =
             $ pure
             $ let
                 renderPreview pupMode previewPath = -- never `Pinned` here so the Halogen slot should not conflict with `Preview`/`Selection` anymore
-                    wrapPinUnpin state modes.previewMode gconfig.render pupMode previewPath
+                    wrapPinUnpin state modes.previewMode pupMode previewPath
             in case state.preview of -- FIXME: xxx: merge the similar logic: `Preview` and `Selection` in one `State` field (but remember that we also need the `Selection` path for keyboard purposes only)
                 Focused focusPreviewPath ->
                    renderPreview Preview focusPreviewPath
@@ -497,7 +485,7 @@ component' modes rconfig mbChildComp =
           HH.div
             [ HP.style $ Style.historyBox state.theme
             ]
-            $ (HH.div [] <<< pure <<< renderPath state.theme SingleGo gconfig.render state.tree)
+            $ (HH.div [] <<< pure <<< renderPath state.theme SingleGo state.tree)
             <$> Array.reverse state.history
 
         {- Current Pinned -}
@@ -534,7 +522,7 @@ component' modes rconfig mbChildComp =
 
              : if not state.pinnedTextMode then
                   pure $ HH.div_
-                    $ wrapPinUnpin state modes.pinMode gconfig.render Pinned
+                    $ wrapPinUnpin state modes.pinMode Pinned
                    <$> (checkScroll state.pinnedScrollTo $ Array.fromFoldable state.pinned)
                else
                   pure $ HH.div
@@ -574,7 +562,7 @@ component' modes rconfig mbChildComp =
               ]
               [ HH.textarea
                 [ HP.style $ Style.textarea state.theme
-                , HP.value $ TreeConv.toString TreeConv.Indent SvgI._export state.tree
+                , HP.value $ TreeConv.toString TreeConv.Indent (SvgI._export $ SvgEM.Text TreeConv.Indent) state.tree
                 , HP.rows 50
                 , HP.cols 50
                 , HE.onValueChange TryParse
@@ -592,21 +580,25 @@ component' modes rconfig mbChildComp =
             [ HH.textarea
               [ HP.style $ Style.textarea state.theme
               , HP.value $ case state.exportMode of
-                    Json -> TreeConv.writeJSON state.tree
-                    Text tmode -> TreeConv.toString tmode SvgI._export state.tree
-                    Dot -> TreeConv.toDotText'
+                    SvgEM.Json -> TreeConv.writeJSON state.tree
+                    SvgEM.Text tmode -> TreeConv.toString tmode (SvgI._export $ SvgEM.Text tmode) state.tree
+                    SvgEM.Custom exportId ->
+                        fromMaybe ("No implementation for export: " <> show exportId)
+                          $ SvgEM.exportTree exportId state.tree
+                        {- TreeConv.toDotText'
                               (TreeConv.dotConvertWithLabel
                                     (const $ SvgI._export >>> TreeConv.DotId) -- TODO
                                     (const $ SvgI._export)
                               )
                               state.tree
+                        -}
               , HP.readOnly true
               , HP.rows 10
               , HP.cols 50
               ]
             , HH.div
               []
-               $  (\exp -> _qbutton state.theme (exportLabel exp) $ SwitchExport exp)
+               $  (\exp -> _qbutton state.theme (SvgEM.label exp) $ SwitchExport exp)
               <$> Set.toUnfoldable state.exports
             ]
 
@@ -716,8 +708,8 @@ component' modes rconfig mbChildComp =
       >>> map NEA.toArray
       >>> map (map Tuple.snd)
 
-  wrapPinUnpin :: State a -> SvgTree.NodeMode -> SvgTree.RenderConfig a -> PinUnpinMode_ -> Path -> HH.HTML _ (Action a)
-  wrapPinUnpin state nodeMode config pupMode nodePath =
+  wrapPinUnpin :: State a -> SvgTree.NodeMode -> PinUnpinMode_ -> Path -> HH.HTML _ (Action a)
+  wrapPinUnpin state nodeMode pupMode nodePath =
     HH.div
       [ HP.style Style.pinBox ]
       [ HH.div
@@ -727,9 +719,9 @@ component' modes rconfig mbChildComp =
           else
             _qbutton state.theme "Unpin" $ UnPin nodePath
         , case pupMode of
-            Pinned    -> renderPath state.theme SingleGo config state.tree nodePath
-            Selection -> renderPath state.theme ReadOnly config state.tree nodePath
-            Preview   -> renderPath state.theme ReadOnly config state.tree nodePath
+            Pinned    -> renderPath state.theme SingleGo state.tree nodePath
+            Selection -> renderPath state.theme ReadOnly state.tree nodePath
+            Preview   -> renderPath state.theme ReadOnly state.tree nodePath
         ]
       , case pupMode of
         Pinned    -> pinnedAt  state nodeMode nodePath
@@ -811,7 +803,7 @@ component' modes rconfig mbChildComp =
       handleAction
         $ Receive
           { size : s.size
-          , tree : TreeConv.fromString SvgI._import userInput <#> fromMaybe SvgI.default
+          , tree : TreeConv.fromString (SvgI._import $ SvgEM.Text TreeConv.Indent) userInput <#> fromMaybe SvgI.default
           , elements : s.elements
           , exports : s.exports
           , theme : s.theme
@@ -1047,27 +1039,27 @@ _pathStepButton theme isReadOnly toLabel tree fullPath pStepIndex pValueAtDepth 
       else _pathStepButtonRaw theme true  buttonLabel Nothing
 
 
-renderPath :: forall p a. Style.Theme -> PathMode -> SvgTree.RenderConfig a -> Tree a -> Path -> HH.HTML p (Action a)
-renderPath theme (Breadcrumbs { withAction }) config tree path =
+renderPath :: forall p a. IsSvgTreeValue a => Style.Theme -> PathMode -> Tree a -> Path -> HH.HTML p (Action a)
+renderPath theme (Breadcrumbs { withAction }) tree path =
   case Path.toArray path of
     [] ->
-      HH.div [ HP.style Style.pathBox ] [ _pathReadOnlyRoot theme config.valueLabel tree ]
+      HH.div [ HP.style Style.pathBox ] [ _pathReadOnlyRoot theme SvgI.pathLabel tree ]
     pathArr ->
       HH.div
         [ HP.style Style.pathBox ]
-        $ _pathRootButton theme false config.valueLabel tree
-        : mapWithIndex (_pathStepButton theme false config.valueLabel tree path) pathArr
+        $ _pathRootButton theme false SvgI.pathLabel tree
+        : mapWithIndex (_pathStepButton theme false SvgI.pathLabel tree path) pathArr
        <> (if withAction then [ _qbutton theme "^" $ BreadcrumbsAction path ] else [ ])
-renderPath theme ReadOnly config tree path =
+renderPath theme ReadOnly tree path =
   HH.div
     [ HP.style Style.pathBox ]
-    $ _pathRootButton theme true config.valueLabel tree
-    : mapWithIndex (_pathStepButton theme true config.valueLabel tree path) (Path.toArray path)
-renderPath theme SingleGo config tree path =
+    $ _pathRootButton theme true SvgI.pathLabel tree
+    : mapWithIndex (_pathStepButton theme true SvgI.pathLabel tree path) (Path.toArray path)
+renderPath theme SingleGo tree path =
   HH.div
     [ HP.style Style.pathWithGo ]
     [ _qbutton theme "Go" $ FocusOn path
-    , renderPath theme ReadOnly config tree path
+    , renderPath theme ReadOnly tree path
     ]
 
 
@@ -1080,45 +1072,3 @@ _graphStatus state =
         Focused _   -> SvgTree.GHoverFocus
         LostFocus _ -> SvgTree.GGhostFocus
         None        -> SvgTree.GNormal
-
-
-exportLabel :: ExportMode -> String
-exportLabel = case _ of
-  Json -> "JSON"
-  Dot -> "DOT"
-  Text TreeConv.Lines -> "Lines"
-  Text TreeConv.Indent -> "Indent"
-  Text TreeConv.Paths -> "Paths"
-  Text TreeConv.Corners -> "Corners"
-  Text TreeConv.Triangles -> "Triangles"
-  Text TreeConv.Dashes -> "Dashes"
-
-
-instance Eq ExportMode where
-  eq Json Json = true
-  eq Dot Dot = true
-  eq (Text TreeConv.Lines)     (Text TreeConv.Lines) = true
-  eq (Text TreeConv.Indent)    (Text TreeConv.Indent) = true
-  eq (Text TreeConv.Paths)     (Text TreeConv.Paths) = true
-  eq (Text TreeConv.Corners)   (Text TreeConv.Corners) = true
-  eq (Text TreeConv.Triangles) (Text TreeConv.Triangles) = true
-  eq (Text TreeConv.Dashes)    (Text TreeConv.Dashes) = true
-  eq _ _ = false
-
-instance Ord ExportMode where
-  compare Json Json = EQ
-  compare Dot Dot = EQ
-  compare (Text TreeConv.Lines)     (Text TreeConv.Lines) = EQ
-  compare (Text TreeConv.Indent)    (Text TreeConv.Indent) = EQ
-  compare (Text TreeConv.Paths)     (Text TreeConv.Paths) = EQ
-  compare (Text TreeConv.Corners)   (Text TreeConv.Corners) = EQ
-  compare (Text TreeConv.Triangles) (Text TreeConv.Triangles) = EQ
-  compare (Text TreeConv.Dashes)    (Text TreeConv.Dashes) = EQ
-  compare Json _ = GT
-  compare Dot _ = GT
-  compare (Text TreeConv.Lines)     _ = GT
-  compare (Text TreeConv.Indent)    _ = GT
-  compare (Text TreeConv.Paths)     _ = GT
-  compare (Text TreeConv.Corners)   _ = GT
-  compare (Text TreeConv.Triangles) _ = GT
-  compare (Text TreeConv.Dashes)    _ = GT
