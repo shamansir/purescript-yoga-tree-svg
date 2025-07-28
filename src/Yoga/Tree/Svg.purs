@@ -267,15 +267,15 @@ component' modes mbChildComp =
 
 
   receive :: Input a -> State a -> State a
-  receive input =
-    _
+  receive input s =
+    s
       { size = input.size
       , tree = input.tree
       , elements = input.elements
       , exports = input.exports
       , depthLimit = input.depthLimit
       , childrenLimit = input.childrenLimit
-      , focus = fromMaybe Path.root input.mbFocus
+      , focus = fromMaybe s.focus input.mbFocus
       , theme = input.theme
       , breadcrumbsAction = input.breadcrumbsAction
       , showChildrenCount = input.showChildrenCount
