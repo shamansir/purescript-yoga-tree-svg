@@ -12,4 +12,5 @@ generated-docs/
 .spago
 dist/
 index.js
+web/app.js
 .parcel-cache/
